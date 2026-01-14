@@ -1,0 +1,165 @@
+refresh_account:
+  name: Refresh account
+  description: Refresh account summary data.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+
+buy_lotto645:
+  name: Buy Lotto 6/45
+  description: Purchase Lotto 6/45 tickets.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    count:
+      name: Count
+      description: Number of tickets (1-5) for auto mode.
+      example: 3
+    mode:
+      name: Mode
+      description: auto or manual.
+      example: "auto"
+    numbers:
+      name: Numbers
+      description: Manual numbers (list of 6-number arrays or comma-separated strings).
+      example: [[1, 2, 3, 4, 5, 6]]
+    use_my_numbers:
+      name: Use stored numbers
+      description: Use saved my numbers for manual purchase.
+      example: true
+
+buy_pension720:
+  name: Buy Pension 720+
+  description: Purchase Pension 720+ (auto).
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+
+fetch_lotto645_result:
+  name: Fetch Lotto 6/45 result
+  description: Retrieve Lotto 6/45 result data.
+  fields:
+    draw_no:
+      name: Draw number
+      description: Optional draw number.
+      example: 1206
+
+fetch_pension720_result:
+  name: Fetch Pension 720+ result
+  description: Retrieve Pension 720+ result data.
+  fields:
+    draw_no:
+      name: Draw number
+      description: Optional draw number.
+      example: 244
+
+fetch_winning_shops:
+  name: Fetch winning shops
+  description: Retrieve winning shop list and optionally filter by distance.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    lottery_type:
+      name: Lottery type
+      description: lt645 or pt720.
+      example: "lt645"
+    rank:
+      name: Rank
+      description: Winning rank (1, 2, 21).
+      example: "1"
+    draw_no:
+      name: Draw number
+      description: Optional draw number.
+      example: "1206"
+    region:
+      name: Region
+      description: Optional region code (e.g., Seoul, Gyeonggi).
+      example: "Seoul"
+    location_entity:
+      name: Location entity
+      description: Optional entity id with latitude/longitude.
+      example: "person.home"
+    max_distance_km:
+      name: Max distance (km)
+      description: Maximum distance for filtering.
+      example: 10
+    limit:
+      name: Limit
+      description: Limit number of items returned.
+      example: 20
+
+set_my_numbers:
+  name: Set my numbers
+  description: Save my numbers locally for quick use.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    lottery_type:
+      name: Lottery type
+      description: lt645 or pt720.
+      example: "lt645"
+    numbers:
+      name: Numbers
+      description: List of numbers.
+      example: [[1, 2, 3, 4, 5, 6]]
+
+get_my_numbers:
+  name: Get my numbers
+  description: Return locally stored numbers.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+
+check_lotto645_numbers:
+  name: Check Lotto 6/45 numbers
+  description: Check numbers against a draw result.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    draw_no:
+      name: Draw number
+      description: Optional draw number.
+      example: 1206
+    numbers:
+      name: Numbers
+      description: Manual numbers (list of 6-number arrays or comma-separated strings).
+      example: [[1, 2, 3, 4, 5, 6]]
+    use_my_numbers:
+      name: Use stored numbers
+      description: Use saved my numbers.
+      example: true
+
+check_pension720_numbers:
+  name: Check Pension 720+ numbers
+  description: Check Pension 720+ numbers against a draw result.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    draw_no:
+      name: Draw number
+      description: Optional draw number.
+      example: 244
+    numbers:
+      name: Numbers
+      description: Numbers list (e.g., ["1XXXXXX", "2XXXXXX"]).
+      example: ["1123456"]
+    use_my_numbers:
+      name: Use stored numbers
+      description: Use saved my numbers.
+      example: true

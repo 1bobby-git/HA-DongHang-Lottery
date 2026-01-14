@@ -1,0 +1,96 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "동행복권",
+        "description": "동행복권 계정 정보를 입력하세요. [동행복권](https://www.dhlottery.co.kr/)\n내 위치 엔티티 (선택): 주변 추천 기준 위치",
+        "data": {
+          "username": "아이디",
+          "password": "비밀번호",
+          "location_entity": "위치 엔티티"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "동행복권 옵션",
+        "data": {
+          "location_entity": "위치 엔티티",
+          "username": "아이디",
+          "password": "비밀번호"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance": {
+        "name": "동행복권 잔액"
+      },
+      "unconfirmed_games": {
+        "name": "미확인 게임수"
+      },
+      "unclaimed_high_value": {
+        "name": "고액 미수령 당첨"
+      },
+      "last_update": {
+        "name": "최근 업데이트"
+      },
+      "lotto645_round": {
+        "name": "로또6/45 회차"
+      },
+      "lotto645_numbers": {
+        "name": "로또6/45 당첨번호"
+      },
+      "lotto645_bonus": {
+        "name": "로또6/45 보너스"
+      },
+      "lotto645_draw_date": {
+        "name": "로또6/45 추첨일"
+      },
+      "lotto645_first_prize": {
+        "name": "로또6/45 1등 당첨금"
+      },
+      "lotto645_first_winners": {
+        "name": "로또6/45 1등 당첨자 수"
+      },
+      "lotto645_second_winners": {
+        "name": "로또6/45 2등 당첨자 수"
+      },
+      "lotto645_third_winners": {
+        "name": "로또6/45 3등 당첨자 수"
+      },
+      "lotto645_total_winners": {
+        "name": "로또6/45 전체 당첨자 수"
+      },
+      "lotto645_sales_amount": {
+        "name": "로또6/45 당첨 회차 판매금"
+      },
+      "pension720_round": {
+        "name": "연금복권720+ 회차"
+      },
+      "pension720_draw_date": {
+        "name": "연금복권720+ 추첨일"
+      },
+      "pension720_first_prize": {
+        "name": "연금복권720+ 1등 당첨금"
+      },
+      "pension720_first_winners": {
+        "name": "연금복권720+ 1등 당첨자 수"
+      },
+      "pension720_group": {
+        "name": "연금복권720+ 1등 조"
+      },
+      "pension720_number": {
+        "name": "연금복권720+ 1등 번호"
+      }
+    },
+    "button": {
+      "update": {
+        "name": "동행복권 업데이트"
+      }
+    }
+  }
+}

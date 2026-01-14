@@ -1,0 +1,96 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Donghang Lottery",
+        "description": "Enter your Donghang Lottery credentials. [Donghang Lottery](https://www.dhlottery.co.kr/)\nLocation entity (optional): nearby search reference",
+        "data": {
+          "username": "Username",
+          "password": "Password",
+          "location_entity": "Location entity"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Donghang Lottery options",
+        "data": {
+          "location_entity": "Location entity",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "balance": {
+        "name": "Donghang Lottery Balance"
+      },
+      "unconfirmed_games": {
+        "name": "Unconfirmed Games"
+      },
+      "unclaimed_high_value": {
+        "name": "Unclaimed High Value"
+      },
+      "last_update": {
+        "name": "Last Update"
+      },
+      "lotto645_round": {
+        "name": "Lotto 6/45 Round"
+      },
+      "lotto645_numbers": {
+        "name": "Lotto 6/45 Numbers"
+      },
+      "lotto645_bonus": {
+        "name": "Lotto 6/45 Bonus"
+      },
+      "lotto645_draw_date": {
+        "name": "Lotto 6/45 Draw Date"
+      },
+      "lotto645_first_prize": {
+        "name": "Lotto 6/45 1st Prize"
+      },
+      "lotto645_first_winners": {
+        "name": "Lotto 6/45 1st Winners"
+      },
+      "lotto645_second_winners": {
+        "name": "Lotto 6/45 2nd Winners"
+      },
+      "lotto645_third_winners": {
+        "name": "Lotto 6/45 3rd Winners"
+      },
+      "lotto645_total_winners": {
+        "name": "Lotto 6/45 Total Winners"
+      },
+      "lotto645_sales_amount": {
+        "name": "Lotto 6/45 Sales Amount"
+      },
+      "pension720_round": {
+        "name": "Pension 720+ Round"
+      },
+      "pension720_draw_date": {
+        "name": "Pension 720+ Draw Date"
+      },
+      "pension720_first_prize": {
+        "name": "Pension 720+ 1st Prize"
+      },
+      "pension720_first_winners": {
+        "name": "Pension 720+ 1st Winners"
+      },
+      "pension720_group": {
+        "name": "Pension 720+ Group"
+      },
+      "pension720_number": {
+        "name": "Pension 720+ Number"
+      }
+    },
+    "button": {
+      "update": {
+        "name": "Donghang Lottery Update"
+      }
+    }
+  }
+}
