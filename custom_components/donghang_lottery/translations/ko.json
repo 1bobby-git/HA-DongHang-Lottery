@@ -16,10 +16,13 @@
     "step": {
       "init": {
         "title": "동행복권 옵션",
+        "description": "차단 방지: 요청 간격을 늘리면 서버 차단을 피할 수 있습니다.",
         "data": {
           "location_entity": "위치 엔티티",
           "username": "아이디",
-          "password": "비밀번호"
+          "password": "비밀번호",
+          "min_request_interval": "최소 요청 간격 (초)",
+          "max_request_interval": "최대 요청 간격 (초)"
         }
       }
     }
@@ -37,6 +40,9 @@
       },
       "last_update": {
         "name": "최근 업데이트"
+      },
+      "next_update": {
+        "name": "다음 업데이트"
       },
       "lotto645_round": {
         "name": "로또6/45 회차"
@@ -91,6 +97,58 @@
       "update": {
         "name": "동행복권 업데이트"
       }
+    },
+    "binary_sensor": {
+      "has_unclaimed_prizes": {
+        "name": "미수령 당첨금 있음"
+      },
+      "has_unconfirmed_games": {
+        "name": "미확인 게임 있음"
+      },
+      "has_balance": {
+        "name": "예치금 있음"
+      },
+      "lotto645_has_first_winner": {
+        "name": "로또6/45 1등 당첨자 있음"
+      }
+    }
+  },
+  "services": {
+    "refresh_account": {
+      "name": "계정 새로고침",
+      "description": "계정 정보를 새로고침합니다"
+    },
+    "buy_lotto645": {
+      "name": "로또6/45 구매",
+      "description": "로또6/45를 구매합니다"
+    },
+    "buy_pension720": {
+      "name": "연금복권720+ 구매",
+      "description": "연금복권720+를 구매합니다"
+    },
+    "fetch_lotto645_result": {
+      "name": "로또6/45 결과 조회",
+      "description": "로또6/45 추첨 결과를 조회합니다"
+    },
+    "fetch_pension720_result": {
+      "name": "연금복권720+ 결과 조회",
+      "description": "연금복권720+ 추첨 결과를 조회합니다"
+    },
+    "fetch_winning_shops": {
+      "name": "당첨 판매점 조회",
+      "description": "당첨 복권 판매점을 조회합니다"
+    },
+    "fetch_next_draw_info": {
+      "name": "다음 회차 정보 조회",
+      "description": "다음 복권 추첨 정보를 조회합니다"
+    },
+    "fetch_purchase_ledger": {
+      "name": "구매 내역 조회",
+      "description": "복권 구매 내역을 조회합니다"
+    },
+    "search_lottery_shops": {
+      "name": "복권 판매점 검색",
+      "description": "시/도 및 구/군으로 복권 판매점을 검색합니다"
     }
   }
 }

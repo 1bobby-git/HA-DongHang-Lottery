@@ -163,3 +163,108 @@ check_pension720_numbers:
       name: Use stored numbers
       description: Use saved my numbers.
       example: true
+
+fetch_next_draw_info:
+  name: Fetch next draw info
+  description: Retrieve information about the next lottery draw.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    lottery_type:
+      name: Lottery type
+      description: lt645 or pt720.
+      example: "lt645"
+
+fetch_purchase_ledger:
+  name: Fetch purchase ledger
+  description: Retrieve purchase history of lottery tickets.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry id.
+      example: "0123456789abcdef"
+    start_date:
+      name: Start date
+      description: Start date in YYYYMMDD format (default today).
+      example: "20260101"
+    end_date:
+      name: End date
+      description: End date in YYYYMMDD format (default today).
+      example: "20260119"
+    lottery_type:
+      name: Lottery type
+      description: Optional lottery type filter.
+      example: ""
+    win_result:
+      name: Win result
+      description: Optional win result filter.
+      example: ""
+    page_num:
+      name: Page number
+      description: Page number (default 1).
+      example: 1
+    page_size:
+      name: Page size
+      description: Items per page (default 10).
+      example: 10
+
+search_lottery_shops:
+  name: Search lottery shops
+  description: Search lottery shops by city and district.
+  fields:
+    city:
+      name: City
+      description: City name (e.g., 서울, 경기).
+      example: "서울"
+      required: true
+    district:
+      name: District
+      description: District name (e.g., 강남구, 수원시).
+      example: "강남구"
+      required: true
+    lotto645:
+      name: Lotto 6/45
+      description: Filter shops selling Lotto 6/45.
+      example: true
+    lotto520:
+      name: Lotto 5/20
+      description: Filter shops selling Lotto 5/20.
+      example: false
+    speetto5:
+      name: Speetto 500
+      description: Filter shops selling Speetto 500.
+      example: false
+    speetto10:
+      name: Speetto 1000
+      description: Filter shops selling Speetto 1000.
+      example: false
+    speetto20:
+      name: Speetto 2000
+      description: Filter shops selling Speetto 2000.
+      example: false
+    pension720:
+      name: Pension 720+
+      description: Filter shops selling Pension 720+.
+      example: false
+    page_num:
+      name: Page number
+      description: Page number (default 1).
+      example: 1
+    page_size:
+      name: Page size
+      description: Items per page (default 10).
+      example: 10
+    location_entity:
+      name: Location entity
+      description: Optional entity id with latitude/longitude for distance filtering.
+      example: "person.home"
+    max_distance_km:
+      name: Max distance (km)
+      description: Maximum distance for filtering.
+      example: 5
+    limit:
+      name: Limit
+      description: Limit number of items returned.
+      example: 10

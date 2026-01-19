@@ -16,10 +16,13 @@
     "step": {
       "init": {
         "title": "Donghang Lottery options",
+        "description": "Anti-blocking: Increase request intervals to avoid server blocks.",
         "data": {
           "location_entity": "Location entity",
           "username": "Username",
-          "password": "Password"
+          "password": "Password",
+          "min_request_interval": "Min request interval (seconds)",
+          "max_request_interval": "Max request interval (seconds)"
         }
       }
     }
@@ -37,6 +40,9 @@
       },
       "last_update": {
         "name": "Last Update"
+      },
+      "next_update": {
+        "name": "Next Update"
       },
       "lotto645_round": {
         "name": "Lotto 6/45 Round"
@@ -91,6 +97,58 @@
       "update": {
         "name": "Donghang Lottery Update"
       }
+    },
+    "binary_sensor": {
+      "has_unclaimed_prizes": {
+        "name": "Has Unclaimed Prizes"
+      },
+      "has_unconfirmed_games": {
+        "name": "Has Unconfirmed Games"
+      },
+      "has_balance": {
+        "name": "Has Balance"
+      },
+      "lotto645_has_first_winner": {
+        "name": "Lotto 6/45 Has 1st Winner"
+      }
+    }
+  },
+  "services": {
+    "refresh_account": {
+      "name": "Refresh Account",
+      "description": "Refresh account information"
+    },
+    "buy_lotto645": {
+      "name": "Buy Lotto 6/45",
+      "description": "Purchase Lotto 6/45 tickets"
+    },
+    "buy_pension720": {
+      "name": "Buy Pension 720+",
+      "description": "Purchase Pension 720+ tickets"
+    },
+    "fetch_lotto645_result": {
+      "name": "Fetch Lotto 6/45 Result",
+      "description": "Get Lotto 6/45 draw results"
+    },
+    "fetch_pension720_result": {
+      "name": "Fetch Pension 720+ Result",
+      "description": "Get Pension 720+ draw results"
+    },
+    "fetch_winning_shops": {
+      "name": "Fetch Winning Shops",
+      "description": "Get winning lottery shops by location"
+    },
+    "fetch_next_draw_info": {
+      "name": "Fetch Next Draw Info",
+      "description": "Get next lottery draw information"
+    },
+    "fetch_purchase_ledger": {
+      "name": "Fetch Purchase Ledger",
+      "description": "Get lottery purchase history"
+    },
+    "search_lottery_shops": {
+      "name": "Search Lottery Shops",
+      "description": "Search lottery shops by city and district"
     }
   }
 }

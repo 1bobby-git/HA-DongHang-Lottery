@@ -59,6 +59,13 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
         device_group="account",
     ),
     DonghangLotterySensorDescription(
+        key="next_update",
+        translation_key="next_update",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        device_group="account",
+    ),
+    DonghangLotterySensorDescription(
         key="lotto645_round",
         translation_key="lotto645_round",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("ltEpsd")),
@@ -209,6 +216,8 @@ class DonghangLotterySensor(CoordinatorEntity[DonghangLotteryCoordinator], Senso
     def native_value(self) -> Any:
         if self.entity_description.key == "last_update":
             return self.coordinator.last_update_success_time
+        if self.entity_description.key == "next_update":
+            return self.coordinator.next_update_time
         data: DonghangLotteryData | None = self.coordinator.data
         if not data:
             return None

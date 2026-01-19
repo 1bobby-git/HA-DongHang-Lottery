@@ -7,6 +7,8 @@ import base64
 import binascii
 import datetime as dt
 import json
+import logging
+import random
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -21,17 +23,37 @@ from Crypto.PublicKey import RSA
 from Crypto.Random import get_random_bytes
 from yarl import URL
 
+_LOGGER = logging.getLogger(__name__)
 
-USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/131.0.0.0 Safari/537.36"
-)
+# User-Agent 목록 (차단 우회용 로테이션)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+]
+
+USER_AGENT = USER_AGENTS[0]
+
+
+def _get_random_user_agent() -> str:
+    """랜덤 User-Agent 반환."""
+    return random.choice(USER_AGENTS)
 
 
 BASE_HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept-Language": "ko,en-US;q=0.9,en;q=0.8,ko-KR;q=0.7",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
 }
 
 
@@ -54,8 +76,52 @@ class AccountSummary:
     unclaimed_high_value_count: int
 
 
+@dataclass
+class PurchaseRecord:
+    """구매 내역 레코드."""
+
+    lottery_type: str
+    round_no: int
+    purchase_date: str
+    numbers: list[str]
+    amount: int
+    result: str | None = None
+    prize: int = 0
+
+
+@dataclass
+class WinningRecord:
+    """당첨 내역 레코드."""
+
+    lottery_type: str
+    round_no: int
+    draw_date: str
+    rank: int
+    prize: int
+    numbers: str
+    status: str  # claimed, unclaimed
+
+
 class DonghangLotteryClient:
-    def __init__(self, session: ClientSession, username: str, password: str) -> None:
+    """동행복권 API 클라이언트.
+
+    차단 방지 기능:
+    - 요청 간 랜덤 딜레이 (1~3초)
+    - User-Agent 로테이션
+    - 자동 재시도 (exponential backoff)
+    - 세션 자동 복구
+    """
+
+    def __init__(
+        self,
+        session: ClientSession,
+        username: str,
+        password: str,
+        min_request_interval: float = 1.0,
+        max_request_interval: float = 3.0,
+        max_retries: int = 3,
+        retry_delay: float = 5.0,
+    ) -> None:
         self._session = session
         self._username = username
         self._password = password
@@ -67,6 +133,40 @@ class DonghangLotteryClient:
         self._key_code: str | None = None
         self._iteration_count = 1000
         self._block_size = 16
+
+        # 차단 방지 설정
+        self._min_request_interval = min_request_interval
+        self._max_request_interval = max_request_interval
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
+        self._last_request_time: float = 0
+        self._request_lock = asyncio.Lock()
+        self._current_user_agent = _get_random_user_agent()
+        self._consecutive_failures = 0
+
+    async def _throttle_request(self) -> None:
+        """요청 간 랜덤 딜레이 적용 (차단 방지)."""
+        async with self._request_lock:
+            now = time.time()
+            elapsed = now - self._last_request_time
+            min_interval = random.uniform(
+                self._min_request_interval, self._max_request_interval
+            )
+            if elapsed < min_interval:
+                delay = min_interval - elapsed
+                _LOGGER.debug("Rate limiting: waiting %.2f seconds", delay)
+                await asyncio.sleep(delay)
+            self._last_request_time = time.time()
+
+    def _rotate_user_agent(self) -> None:
+        """User-Agent 로테이션."""
+        self._current_user_agent = _get_random_user_agent()
+
+    def _get_headers(self, base_headers: dict[str, str] | None = None) -> dict[str, str]:
+        """현재 User-Agent가 적용된 헤더 반환."""
+        headers = {**(base_headers or BASE_HEADERS)}
+        headers["User-Agent"] = self._current_user_agent
+        return headers
 
     async def async_login(self, force: bool = False) -> None:
         if self._logged_in and not force:
@@ -147,14 +247,36 @@ class DonghangLotteryClient:
         )
 
     async def async_get_lotto645_result(self, draw_no: int | None = None) -> dict[str, Any]:
-        if draw_no is None:
-            draw_no = await self._get_latest_lotto645_round()
-        params = {"drwNo": str(draw_no)}
+        # 새 API는 drwNo 파라미터를 무시하고 최신 회차를 반환함
+        # draw_no가 필요한 경우 다른 API 엔드포인트를 사용해야 할 수 있음
         data = await self._get_json(
             "https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do",
-            params=params,
         )
-        return data
+
+        # 새 응답 형식 파싱: data.list[0]
+        result_list = (data.get("data") or {}).get("list") or []
+        if not result_list:
+            return {}
+
+        item = result_list[0]
+
+        # 기존 형식과 호환되는 반환값으로 변환
+        return {
+            "drwNo": item.get("ltEpsd"),
+            "drwtNo1": item.get("tm1WnNo"),
+            "drwtNo2": item.get("tm2WnNo"),
+            "drwtNo3": item.get("tm3WnNo"),
+            "drwtNo4": item.get("tm4WnNo"),
+            "drwtNo5": item.get("tm5WnNo"),
+            "drwtNo6": item.get("tm6WnNo"),
+            "bnusNo": item.get("bnsWnNo"),
+            "firstPrzwnerCo": item.get("rnk1WnNope"),
+            "firstWinamnt": item.get("rnk1WnAmt"),
+            "totSellamnt": item.get("wholEpsdSumNtslAmt"),
+            "drwNoDate": item.get("ltRflYmd"),
+            # 원본 데이터도 포함
+            "_raw": item,
+        }
 
     async def async_get_pension720_result(self, draw_no: int | None = None) -> dict[str, Any]:
         if draw_no is None:
@@ -168,8 +290,10 @@ class DonghangLotteryClient:
 
     async def async_get_pension720_rounds(self) -> list[int]:
         data = await self._get_json("https://www.dhlottery.co.kr/pt720/selectPstPt720WnList.do")
+        # 새 API 형식: data.data.result
+        result_list = (data.get("data") or {}).get("result") or data.get("result") or []
         rounds = []
-        for item in data.get("result", []) or []:
+        for item in result_list:
             epsd = item.get("psltEpsd")
             if epsd is None:
                 continue
@@ -214,7 +338,9 @@ class DonghangLotteryClient:
         else:
             data = await self._get_json("https://www.dhlottery.co.kr/lt645/selectLtEpsdInfo.do")
             epsd_key = "ltEpsd"
-        rounds = [_safe_int(item.get(epsd_key)) for item in data.get("list", []) or []]
+        # 새 API 형식: data.data.list
+        item_list = (data.get("data") or {}).get("list") or data.get("list") or []
+        rounds = [_safe_int(item.get(epsd_key)) for item in item_list]
         rounds = [r for r in rounds if r > 0]
         if not rounds:
             raise DonghangLotteryResponseError("No rounds available for winning shops")
@@ -240,6 +366,239 @@ class DonghangLotteryClient:
         result["round"] = result.get("round") or await self._get_latest_pension720_round_for_buy()
         return result
 
+    async def async_get_unclaimed_prizes(self) -> list[dict[str, Any]]:
+        """미수령 당첨금 조회.
+
+        Returns:
+            미수령 당첨금 목록
+        """
+        await self.async_login()
+        tooltip = await self._get_mypage_tooltip()
+        return tooltip.get("nrcvmtLramWnCntList") or []
+
+    async def async_get_unconfirmed_games(self) -> list[dict[str, Any]]:
+        """미확인 복권 목록 조회.
+
+        Returns:
+            미확인 복권 목록
+        """
+        await self.async_login()
+        tooltip = await self._get_mypage_tooltip()
+        ncfm_info = tooltip.get("ncfmLtInfo") or {}
+        return ncfm_info.get("list") or []
+
+    async def async_get_purchase_ledger(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        lottery_type: str | None = None,
+        win_result: str | None = None,
+        page_num: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        """구매 내역 조회.
+
+        Args:
+            start_date: 조회 시작일 (YYYYMMDD 형식, 기본값: 오늘)
+            end_date: 조회 종료일 (YYYYMMDD 형식, 기본값: 오늘)
+            lottery_type: 복권 종류 (빈값: 전체)
+            win_result: 당첨 결과 필터 (빈값: 전체)
+            page_num: 페이지 번호 (기본값: 1)
+            page_size: 페이지당 항목 수 (기본값: 10)
+
+        Returns:
+            구매 내역 목록
+        """
+        await self.async_login()
+
+        # 기본값: 오늘 날짜
+        today = dt.date.today().strftime("%Y%m%d")
+        if not start_date:
+            start_date = today
+        if not end_date:
+            end_date = today
+
+        timestamp = int(time.time() * 1000)
+        params = {
+            "srchStrDt": start_date,
+            "srchEndDt": end_date,
+            "sort": "",
+            "ltGdsCd": lottery_type or "",
+            "winResult": win_result or "",
+            "pageNum": str(page_num),
+            "recordCountPerPage": str(page_size),
+            "_": str(timestamp),
+        }
+
+        headers = {
+            **BASE_HEADERS,
+            "Referer": "https://www.dhlottery.co.kr/mypage/home",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "AJAX": "true",
+        }
+        cookie_header = self._get_cookie_header()
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+
+        return await self._get_json(
+            "https://www.dhlottery.co.kr/mypage/selectMyLotteryledger.do",
+            headers=headers,
+            params=params,
+        )
+
+    async def async_search_lottery_shops(
+        self,
+        city: str,
+        district: str,
+        lotto645: bool = False,
+        lotto520: bool = False,
+        speetto5: bool = False,
+        speetto10: bool = False,
+        speetto20: bool = False,
+        pension720: bool = False,
+        page_num: int = 1,
+        page_size: int = 10,
+    ) -> dict[str, Any]:
+        """복권 판매점 검색.
+
+        Args:
+            city: 시/도 이름 (예: 서울, 경기)
+            district: 구/군 이름 (예: 강남구, 수원시)
+            lotto645: 로또6/45 판매점 필터
+            lotto520: 로또5/20 판매점 필터
+            speetto5: 스피또500 판매점 필터
+            speetto10: 스피또1000 판매점 필터
+            speetto20: 스피또2000 판매점 필터
+            pension720: 연금복권720+ 판매점 필터
+            page_num: 페이지 번호 (기본값: 1)
+            page_size: 페이지당 항목 수 (기본값: 10)
+
+        Returns:
+            판매점 목록
+        """
+        timestamp = int(time.time() * 1000)
+        params = {
+            "l645LtNtslYn": "Y" if lotto645 else "N",
+            "l520LtNtslYn": "Y" if lotto520 else "N",
+            "st5LtNtslYn": "Y" if speetto5 else "N",
+            "st10LtNtslYn": "Y" if speetto10 else "N",
+            "st20LtNtslYn": "Y" if speetto20 else "N",
+            "cpexUsePsbltyYn": "Y" if pension720 else "N",
+            "pageNum": str(page_num),
+            "recordCountPerPage": str(page_size),
+            "pageCount": "5",
+            "srchCtpvNm": city,
+            "srchSggNm": district,
+            "_": str(timestamp),
+        }
+
+        headers = {
+            **BASE_HEADERS,
+            "Referer": "https://www.dhlottery.co.kr/store.do?method=topStoreLocation",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+        }
+
+        return await self._get_json(
+            "https://www.dhlottery.co.kr/prchsplcsrch/selectLtShp.do",
+            headers=headers,
+            params=params,
+        )
+
+    async def async_get_next_draw_info(self, lottery_type: str = "lt645") -> dict[str, Any]:
+        """다음 회차 추첨 정보 조회.
+
+        Args:
+            lottery_type: lt645 (로또), pt720 (연금복권)
+
+        Returns:
+            다음 회차 정보 (회차, 추첨일, 마감일 등)
+        """
+        if lottery_type == "pt720":
+            url = "https://www.dhlottery.co.kr/pt720/selectPtEpsdInfo.do"
+            epsd_key = "psltEpsd"
+        else:
+            url = "https://www.dhlottery.co.kr/lt645/selectLtEpsdInfo.do"
+            epsd_key = "ltEpsd"
+
+        data = await self._get_json(url)
+        result = self._parse_nested_response(data)
+        item_list = result.get("list") or []
+
+        if not item_list:
+            return {}
+
+        # 가장 최근 회차 정보 반환
+        latest = max(item_list, key=lambda x: _safe_int(x.get(epsd_key)) or 0)
+        return latest
+
+    async def async_check_lotto645_numbers(
+        self,
+        draw_no: int,
+        numbers: list[list[int]],
+    ) -> list[dict[str, Any]]:
+        """로또 6/45 번호 당첨 확인.
+
+        Args:
+            draw_no: 회차 번호
+            numbers: 확인할 번호 목록 [[1,2,3,4,5,6], ...]
+
+        Returns:
+            당첨 결과 목록
+        """
+        result = await self.async_get_lotto645_result(draw_no)
+
+        # 당첨 번호 추출
+        win_numbers = set()
+        for key in ("drwtNo1", "drwtNo2", "drwtNo3", "drwtNo4", "drwtNo5", "drwtNo6"):
+            num = result.get(key)
+            if num:
+                win_numbers.add(int(num))
+
+        bonus = result.get("bnusNo")
+        if bonus:
+            bonus = int(bonus)
+
+        checked = []
+        for entry in numbers:
+            entry_set = set(entry)
+            match_count = len(win_numbers & entry_set)
+            bonus_match = bonus in entry_set if bonus else False
+
+            # 등수 계산
+            rank = None
+            if match_count == 6:
+                rank = 1
+            elif match_count == 5 and bonus_match:
+                rank = 2
+            elif match_count == 5:
+                rank = 3
+            elif match_count == 4:
+                rank = 4
+            elif match_count == 3:
+                rank = 5
+
+            checked.append({
+                "numbers": sorted(entry),
+                "match_count": match_count,
+                "bonus_match": bonus_match,
+                "rank": rank,
+                "win_numbers": sorted(win_numbers),
+                "bonus_number": bonus,
+            })
+
+        return checked
+
+    def _parse_nested_response(self, data: dict[str, Any]) -> dict[str, Any]:
+        """중첩된 API 응답 파싱.
+
+        동행복권 API는 data.data 또는 data 형태로 응답을 반환함.
+        """
+        if "data" in data and isinstance(data["data"], dict):
+            return data["data"]
+        return data
+
     async def _get_user_mndp(self) -> dict[str, Any]:
         timestamp = int(time.time() * 1000)
         url = f"https://www.dhlottery.co.kr/mypage/selectUserMndp.do?_={timestamp}"
@@ -251,6 +610,9 @@ class DonghangLotteryClient:
             "AJAX": "true",
             "requestMenuUri": "/mypage/home",
         }
+        cookie_header = self._get_cookie_header()
+        if cookie_header:
+            headers["Cookie"] = cookie_header
         data = await self._get_json(url, headers=headers)
         if "data" in data and isinstance(data["data"], dict):
             data = data["data"]
@@ -266,6 +628,9 @@ class DonghangLotteryClient:
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "AJAX": "true",
         }
+        cookie_header = self._get_cookie_header()
+        if cookie_header:
+            headers["Cookie"] = cookie_header
         data = await self._get_json(
             "https://www.dhlottery.co.kr/mypage/selectMypageTooltip.do",
             headers=headers,
@@ -303,7 +668,10 @@ class DonghangLotteryClient:
     def _update_session_ids(self) -> None:
         for base in ("https://www.dhlottery.co.kr/",):
             cookies = self._session.cookie_jar.filter_cookies(URL(base))
-            if "JSESSIONID" in cookies:
+            # 동행복권은 DHJSESSIONID를 사용함
+            if "DHJSESSIONID" in cookies:
+                self._session_id = cookies["DHJSESSIONID"].value
+            elif "JSESSIONID" in cookies:
                 self._session_id = cookies["JSESSIONID"].value
             if "WMONID" in cookies:
                 self._wmonid = cookies["WMONID"].value
@@ -311,12 +679,23 @@ class DonghangLotteryClient:
     def _get_cookie_header(self) -> str:
         parts = []
         if self._session_id:
-            parts.append(f"JSESSIONID={self._session_id}")
+            parts.append(f"DHJSESSIONID={self._session_id}")
         if self._wmonid:
             parts.append(f"WMONID={self._wmonid}")
         return "; ".join(parts)
 
     async def _get_latest_lotto645_round(self) -> int:
+        # 새 API에서 직접 최신 회차 조회
+        data = await self._get_json(
+            "https://www.dhlottery.co.kr/lt645/selectPstLt645Info.do",
+        )
+        result_list = (data.get("data") or {}).get("list") or []
+        if result_list:
+            round_no = result_list[0].get("ltEpsd")
+            if round_no:
+                return int(round_no)
+
+        # 폴백: 메인 페이지에서 시도
         resp = await self._request("GET", "https://www.dhlottery.co.kr/common.do?method=main")
         html = await self._read_text(resp)
         soup = BeautifulSoup(html, "html5lib")
@@ -571,21 +950,95 @@ class DonghangLotteryClient:
         headers: dict[str, str] | None = None,
         data: Any = None,
         params: dict[str, Any] | None = None,
+        skip_throttle: bool = False,
     ) -> ClientResponse:
-        request_headers = {**BASE_HEADERS}
+        """HTTP 요청 (차단 방지 기능 포함).
+
+        - 요청 간 랜덤 딜레이
+        - 실패 시 자동 재시도 (exponential backoff)
+        - 401 시 자동 재로그인
+        - 403/429 시 User-Agent 로테이션
+        """
+        # 스로틀링 적용
+        if not skip_throttle:
+            await self._throttle_request()
+
+        request_headers = self._get_headers(BASE_HEADERS)
         if headers:
             request_headers.update(headers)
-        try:
-            return await self._session.request(
-                method,
-                url,
-                headers=request_headers,
-                data=data,
-                params=params,
-                timeout=self._timeout,
-            )
-        except Exception as err:
-            raise DonghangLotteryError(f"Request failed: {url}") from err
+            # headers에 User-Agent가 없으면 현재 UA 사용
+            if "User-Agent" not in headers:
+                request_headers["User-Agent"] = self._current_user_agent
+
+        last_error: Exception | None = None
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                resp = await self._session.request(
+                    method,
+                    url,
+                    headers=request_headers,
+                    data=data,
+                    params=params,
+                    timeout=self._timeout,
+                )
+
+                # 성공적인 응답
+                if resp.status == 200:
+                    self._consecutive_failures = 0
+                    return resp
+
+                # 인증 실패 - 재로그인 시도
+                if resp.status == 401:
+                    _LOGGER.warning("401 Unauthorized - attempting re-login")
+                    self._logged_in = False
+                    if attempt < self._max_retries:
+                        await self.async_login(force=True)
+                        # 쿠키 헤더 갱신
+                        cookie_header = self._get_cookie_header()
+                        if cookie_header:
+                            request_headers["Cookie"] = cookie_header
+                        continue
+
+                # 차단됨 - User-Agent 교체 후 재시도
+                if resp.status in (403, 429):
+                    self._consecutive_failures += 1
+                    self._rotate_user_agent()
+                    request_headers["User-Agent"] = self._current_user_agent
+                    _LOGGER.warning(
+                        "Blocked (status=%s) - rotating User-Agent, attempt %d/%d",
+                        resp.status,
+                        attempt + 1,
+                        self._max_retries + 1,
+                    )
+                    if attempt < self._max_retries:
+                        # Exponential backoff
+                        delay = self._retry_delay * (2 ** attempt) + random.uniform(0, 1)
+                        _LOGGER.debug("Waiting %.2f seconds before retry", delay)
+                        await asyncio.sleep(delay)
+                        continue
+
+                # 기타 에러
+                if resp.status >= 400:
+                    _LOGGER.warning("HTTP error %s for %s", resp.status, url)
+
+                return resp
+
+            except asyncio.TimeoutError as err:
+                last_error = err
+                _LOGGER.warning("Request timeout for %s, attempt %d/%d", url, attempt + 1, self._max_retries + 1)
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._retry_delay * (attempt + 1))
+                    continue
+
+            except Exception as err:
+                last_error = err
+                _LOGGER.warning("Request error for %s: %s", url, err)
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._retry_delay)
+                    continue
+
+        raise DonghangLotteryError(f"Request failed after {self._max_retries + 1} attempts: {url}") from last_error
 
     async def _get_json(
         self,

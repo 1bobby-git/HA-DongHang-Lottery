@@ -8,7 +8,14 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 
-from .const import CONF_LOCATION_ENTITY, DOMAIN
+from .const import (
+    CONF_LOCATION_ENTITY,
+    CONF_MAX_REQUEST_INTERVAL,
+    CONF_MIN_REQUEST_INTERVAL,
+    DEFAULT_MAX_REQUEST_INTERVAL,
+    DEFAULT_MIN_REQUEST_INTERVAL,
+    DOMAIN,
+)
 
 
 class DonghangLotteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -61,6 +68,20 @@ class DonghangLotteryOptionsFlowHandler(config_entries.OptionsFlow):
                     CONF_PASSWORD,
                     default=self._entry.options.get(CONF_PASSWORD, self._entry.data.get(CONF_PASSWORD, "")),
                 ): str,
+                vol.Optional(
+                    CONF_MIN_REQUEST_INTERVAL,
+                    default=self._entry.options.get(
+                        CONF_MIN_REQUEST_INTERVAL,
+                        self._entry.data.get(CONF_MIN_REQUEST_INTERVAL, DEFAULT_MIN_REQUEST_INTERVAL),
+                    ),
+                ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_MAX_REQUEST_INTERVAL,
+                    default=self._entry.options.get(
+                        CONF_MAX_REQUEST_INTERVAL,
+                        self._entry.data.get(CONF_MAX_REQUEST_INTERVAL, DEFAULT_MAX_REQUEST_INTERVAL),
+                    ),
+                ): vol.Coerce(float),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

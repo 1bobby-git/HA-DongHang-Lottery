@@ -18,19 +18,36 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .api import DonghangLotteryClient, DonghangLotteryError
 from .const import (
+    ATTR_CITY,
     ATTR_COUNT,
+    ATTR_DISTRICT,
     ATTR_DRAW_NO,
+    ATTR_END_DATE,
     ATTR_ENTRY_ID,
     ATTR_LIMIT,
     ATTR_LOCATION_ENTITY,
+    ATTR_LOTTO520,
+    ATTR_LOTTO645,
     ATTR_LOTTERY_TYPE,
     ATTR_MAX_DISTANCE,
     ATTR_MODE,
     ATTR_NUMBERS,
+    ATTR_PAGE_NUM,
+    ATTR_PAGE_SIZE,
+    ATTR_PENSION720,
     ATTR_RANK,
     ATTR_REGION,
+    ATTR_SPEETTO10,
+    ATTR_SPEETTO20,
+    ATTR_SPEETTO5,
+    ATTR_START_DATE,
     ATTR_USE_MY_NUMBERS,
+    ATTR_WIN_RESULT,
     CONF_LOCATION_ENTITY,
+    CONF_MAX_REQUEST_INTERVAL,
+    CONF_MIN_REQUEST_INTERVAL,
+    DEFAULT_MAX_REQUEST_INTERVAL,
+    DEFAULT_MIN_REQUEST_INTERVAL,
     DOMAIN,
     LOTTERY_LOTTO645,
     LOTTERY_PENSION720,
@@ -41,10 +58,13 @@ from .const import (
     SERVICE_CHECK_LOTTO645_NUMBERS,
     SERVICE_CHECK_PENSION720_NUMBERS,
     SERVICE_FETCH_LOTTO645_RESULT,
+    SERVICE_FETCH_NEXT_DRAW_INFO,
     SERVICE_FETCH_PENSION720_RESULT,
+    SERVICE_FETCH_PURCHASE_LEDGER,
     SERVICE_FETCH_WINNING_SHOPS,
     SERVICE_GET_MY_NUMBERS,
     SERVICE_REFRESH_ACCOUNT,
+    SERVICE_SEARCH_LOTTERY_SHOPS,
     SERVICE_SET_MY_NUMBERS,
 )
 from .coordinator import DonghangLotteryCoordinator
@@ -53,7 +73,8 @@ from .storage import MyNumberStore
 
 LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "button"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "button"]
+# 세션 유지를 위한 keepalive (30분 간격)
 KEEPALIVE_INTERVAL = timedelta(minutes=30)
 
 
@@ -63,8 +84,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = entry.options.get(CONF_USERNAME, entry.data.get(CONF_USERNAME))
     password = entry.options.get(CONF_PASSWORD, entry.data.get(CONF_PASSWORD))
 
+    # 차단 방지 설정
+    min_interval = entry.options.get(
+        CONF_MIN_REQUEST_INTERVAL,
+        entry.data.get(CONF_MIN_REQUEST_INTERVAL, DEFAULT_MIN_REQUEST_INTERVAL),
+    )
+    max_interval = entry.options.get(
+        CONF_MAX_REQUEST_INTERVAL,
+        entry.data.get(CONF_MAX_REQUEST_INTERVAL, DEFAULT_MAX_REQUEST_INTERVAL),
+    )
+
     session = async_get_clientsession(hass)
-    client = DonghangLotteryClient(session, username, password)
+    client = DonghangLotteryClient(
+        session,
+        username,
+        password,
+        min_request_interval=min_interval,
+        max_request_interval=max_interval,
+    )
     coordinator = DonghangLotteryCoordinator(hass, client)
 
     store = MyNumberStore(hass, entry.entry_id)
@@ -112,9 +149,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        unsub = hass.data[DOMAIN][entry.entry_id].get("keepalive_unsub")
+        data = hass.data[DOMAIN].get(entry.entry_id, {})
+        # keepalive 타이머 취소
+        unsub = data.get("keepalive_unsub")
         if unsub:
             unsub()
+        # 코디네이터 스케줄된 업데이트 취소
+        coordinator = data.get("coordinator")
+        if coordinator:
+            coordinator.async_cancel_scheduled_update()
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
 
@@ -251,6 +294,63 @@ def _register_services(hass: HomeAssistant) -> None:
                 vol.Optional(ATTR_DRAW_NO): vol.Coerce(int),
                 vol.Optional(ATTR_NUMBERS): list,
                 vol.Optional(ATTR_USE_MY_NUMBERS, default=False): cv.boolean,
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FETCH_NEXT_DRAW_INFO,
+        _handle_fetch_next_draw_info,
+        schema=vol.Schema(
+            {
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+                vol.Optional(ATTR_LOTTERY_TYPE, default=LOTTERY_LOTTO645): vol.In(
+                    [LOTTERY_LOTTO645, LOTTERY_PENSION720]
+                ),
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FETCH_PURCHASE_LEDGER,
+        _handle_fetch_purchase_ledger,
+        schema=vol.Schema(
+            {
+                vol.Optional(ATTR_ENTRY_ID): cv.string,
+                vol.Optional(ATTR_START_DATE): cv.string,
+                vol.Optional(ATTR_END_DATE): cv.string,
+                vol.Optional(ATTR_LOTTERY_TYPE): cv.string,
+                vol.Optional(ATTR_WIN_RESULT): cv.string,
+                vol.Optional(ATTR_PAGE_NUM, default=1): vol.Coerce(int),
+                vol.Optional(ATTR_PAGE_SIZE, default=10): vol.Coerce(int),
+            }
+        ),
+        supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SEARCH_LOTTERY_SHOPS,
+        _handle_search_lottery_shops,
+        schema=vol.Schema(
+            {
+                vol.Required(ATTR_CITY): cv.string,
+                vol.Required(ATTR_DISTRICT): cv.string,
+                vol.Optional(ATTR_LOTTO645, default=False): cv.boolean,
+                vol.Optional(ATTR_LOTTO520, default=False): cv.boolean,
+                vol.Optional(ATTR_SPEETTO5, default=False): cv.boolean,
+                vol.Optional(ATTR_SPEETTO10, default=False): cv.boolean,
+                vol.Optional(ATTR_SPEETTO20, default=False): cv.boolean,
+                vol.Optional(ATTR_PENSION720, default=False): cv.boolean,
+                vol.Optional(ATTR_PAGE_NUM, default=1): vol.Coerce(int),
+                vol.Optional(ATTR_PAGE_SIZE, default=10): vol.Coerce(int),
+                vol.Optional(ATTR_LOCATION_ENTITY): cv.string,
+                vol.Optional(ATTR_MAX_DISTANCE): vol.Coerce(float),
+                vol.Optional(ATTR_LIMIT): vol.Coerce(int),
             }
         ),
         supports_response=SupportsResponse.ONLY,
@@ -430,6 +530,91 @@ async def _handle_check_pension720_numbers(call: ServiceCall) -> dict[str, Any]:
 
     result = await client.async_check_pension720_numbers(draw_no, numbers)
     return {"result": result, "draw_no": draw_no}
+
+
+async def _handle_fetch_next_draw_info(call: ServiceCall) -> dict[str, Any]:
+    """다음 회차 추첨 정보 조회 서비스 핸들러."""
+    hass = call.hass
+    entry = _get_entry(hass, call)
+    client: DonghangLotteryClient = _get_entry_data(hass, entry)["client"]
+
+    lottery_type = call.data.get(ATTR_LOTTERY_TYPE, LOTTERY_LOTTO645)
+
+    result = await client.async_get_next_draw_info(lottery_type)
+    return {"result": result, "lottery_type": lottery_type}
+
+
+async def _handle_fetch_purchase_ledger(call: ServiceCall) -> dict[str, Any]:
+    """구매 내역 조회 서비스 핸들러."""
+    hass = call.hass
+    entry = _get_entry(hass, call)
+    client: DonghangLotteryClient = _get_entry_data(hass, entry)["client"]
+
+    start_date = call.data.get(ATTR_START_DATE)
+    end_date = call.data.get(ATTR_END_DATE)
+    lottery_type = call.data.get(ATTR_LOTTERY_TYPE)
+    win_result = call.data.get(ATTR_WIN_RESULT)
+    page_num = call.data.get(ATTR_PAGE_NUM, 1)
+    page_size = call.data.get(ATTR_PAGE_SIZE, 10)
+
+    result = await client.async_get_purchase_ledger(
+        start_date=start_date,
+        end_date=end_date,
+        lottery_type=lottery_type,
+        win_result=win_result,
+        page_num=page_num,
+        page_size=page_size,
+    )
+    return {"result": result}
+
+
+async def _handle_search_lottery_shops(call: ServiceCall) -> dict[str, Any]:
+    """복권 판매점 검색 서비스 핸들러."""
+    hass = call.hass
+    entry = _get_entry(hass, call)
+    data = _get_entry_data(hass, entry)
+    client: DonghangLotteryClient = data["client"]
+
+    city = call.data.get(ATTR_CITY)
+    district = call.data.get(ATTR_DISTRICT)
+    lotto645 = call.data.get(ATTR_LOTTO645, False)
+    lotto520 = call.data.get(ATTR_LOTTO520, False)
+    speetto5 = call.data.get(ATTR_SPEETTO5, False)
+    speetto10 = call.data.get(ATTR_SPEETTO10, False)
+    speetto20 = call.data.get(ATTR_SPEETTO20, False)
+    pension720 = call.data.get(ATTR_PENSION720, False)
+    page_num = call.data.get(ATTR_PAGE_NUM, 1)
+    page_size = call.data.get(ATTR_PAGE_SIZE, 10)
+
+    result = await client.async_search_lottery_shops(
+        city=city,
+        district=district,
+        lotto645=lotto645,
+        lotto520=lotto520,
+        speetto5=speetto5,
+        speetto10=speetto10,
+        speetto20=speetto20,
+        pension720=pension720,
+        page_num=page_num,
+        page_size=page_size,
+    )
+
+    items = result.get("list") or result.get("data") or result.get("result") or []
+
+    # 위치 기반 필터링
+    location_entity = call.data.get(ATTR_LOCATION_ENTITY) or data.get("location_entity")
+    max_distance = call.data.get(ATTR_MAX_DISTANCE)
+    limit = call.data.get(ATTR_LIMIT)
+
+    if location_entity:
+        state = hass.states.get(location_entity)
+        if state:
+            lat = state.attributes.get("latitude")
+            lon = state.attributes.get("longitude")
+            if lat is not None and lon is not None:
+                items = _filter_by_distance(items, lat, lon, max_distance, limit)
+
+    return {"result": items, "total_count": result.get("totalCount", len(items))}
 
 
 def _normalize_lotto_numbers(raw_numbers: list[Any]) -> list[list[int]]:
