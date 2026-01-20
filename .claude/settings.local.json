@@ -5,7 +5,10 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)",
       "Bash(git checkout:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: add CLAUDE.md and SuperClaude configuration\n\n- Add project documentation for Claude Code integration\n- Include SuperClaude framework settings\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(git commit:*)"
     ]
   }
 }
