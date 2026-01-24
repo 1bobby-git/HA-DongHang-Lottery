@@ -346,15 +346,22 @@ class ProxyManager:
         return valid
 
     async def _validate_target_access(self, proxies: list[ProxyInfo]) -> list[ProxyInfo]:
-        """2단계: 대상 사이트 접근 검증."""
+        """2단계: 대상 사이트 접근 검증 (HTTPS 터널링 테스트 포함)."""
         valid: list[ProxyInfo] = []
         semaphore = asyncio.Semaphore(20)
+
+        # SSL 컨텍스트 설정 (인증서 검증 완화 - 프록시 환경에서 필요)
+        import ssl
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
 
         async def test(proxy: ProxyInfo) -> ProxyInfo | None:
             async with semaphore:
                 try:
                     start = time.time()
-                    connector = aiohttp.TCPConnector(ssl=False)
+                    # HTTPS 터널링 테스트를 위해 SSL 컨텍스트 사용
+                    connector = aiohttp.TCPConnector(ssl=ssl_context)
                     timeout = aiohttp.ClientTimeout(total=self._proxy_timeout)
 
                     async with aiohttp.ClientSession(connector=connector) as session:
@@ -363,22 +370,28 @@ class ProxyManager:
                             proxy=proxy.url,
                             timeout=timeout,
                             headers={
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                "Accept": "text/html,application/xhtml+xml",
-                                "Accept-Language": "ko-KR,ko;q=0.9",
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                                "Accept-Encoding": "gzip, deflate",
+                                "Connection": "keep-alive",
                             },
                         ) as resp:
-                            # 200, 403, 302도 연결은 됨
+                            # 200, 403, 302도 연결은 됨 (HTTPS 터널링 성공)
                             if resp.status in (200, 302, 403):
                                 proxy.response_time = (time.time() - start) * 1000
                                 if resp.status == 200:
                                     proxy.success_count = 1  # 완전 성공
+                                _LOGGER.debug("[ProxyMgr] ✓ HTTPS 검증 성공: %s:%d (status=%d)",
+                                             proxy.host, proxy.port, resp.status)
                                 return proxy
-                except Exception:
-                    pass
+                except asyncio.TimeoutError:
+                    _LOGGER.debug("[ProxyMgr] 타임아웃: %s:%d", proxy.host, proxy.port)
+                except Exception as e:
+                    _LOGGER.debug("[ProxyMgr] 검증 실패: %s:%d - %s", proxy.host, proxy.port, str(e)[:50])
                 return None
 
-        _LOGGER.info("[ProxyMgr] 대상 사이트 검증: %d개 테스트 중...", len(proxies))
+        _LOGGER.info("[ProxyMgr] 대상 사이트 HTTPS 검증: %d개 테스트 중...", len(proxies))
 
         tasks = [test(p) for p in proxies]
         results = await asyncio.gather(*tasks, return_exceptions=True)

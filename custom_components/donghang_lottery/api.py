@@ -273,6 +273,7 @@ class DonghangLotteryClient:
         self._proxy_manager: Any = None  # ProxyManager 인스턴스
         self._proxy_initialized = False
         self._proxy_init_lock = asyncio.Lock()
+        self._proxy_session: aiohttp.ClientSession | None = None  # 프록시용 세션 (SSL 완화)
 
         _LOGGER.info(
             "[DHLottery] 클라이언트 초기화 - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개, 프록시: %s",
@@ -334,6 +335,26 @@ class DonghangLotteryClient:
         if not self._proxy_manager:
             return None
         return await self._proxy_manager.rotate_proxy(failed=failed)
+
+    async def _get_proxy_session(self) -> aiohttp.ClientSession:
+        """프록시용 세션 반환 (SSL 검증 완화)."""
+        if self._proxy_session is None or self._proxy_session.closed:
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+
+            connector = aiohttp.TCPConnector(ssl=ssl_context, limit=10)
+            self._proxy_session = aiohttp.ClientSession(connector=connector)
+            _LOGGER.debug("[DHLottery] 프록시용 세션 생성 (SSL 검증 완화)")
+
+        return self._proxy_session
+
+    async def _close_proxy_session(self) -> None:
+        """프록시용 세션 닫기."""
+        if self._proxy_session and not self._proxy_session.closed:
+            await self._proxy_session.close()
+            self._proxy_session = None
 
     async def _throttle_request(self) -> None:
         """요청 간 랜덤 딜레이 적용 (Poisson 분포 기반 인간적인 패턴)."""
@@ -1340,15 +1361,27 @@ class DonghangLotteryClient:
                         "사용" if proxy_url else "직접",
                     )
 
-                    resp = await self._session.request(
-                        method,
-                        url,
-                        headers=request_headers,
-                        data=data,
-                        params=params,
-                        timeout=self._timeout,
-                        proxy=proxy_url,  # 프록시 적용
-                    )
+                    # 프록시 사용 시 SSL 검증 완화된 세션 사용
+                    if proxy_url:
+                        session = await self._get_proxy_session()
+                        resp = await session.request(
+                            method,
+                            url,
+                            headers=request_headers,
+                            data=data,
+                            params=params,
+                            timeout=aiohttp.ClientTimeout(total=self._timeout),
+                            proxy=proxy_url,
+                        )
+                    else:
+                        resp = await self._session.request(
+                            method,
+                            url,
+                            headers=request_headers,
+                            data=data,
+                            params=params,
+                            timeout=self._timeout,
+                        )
 
                     # 성공적인 응답 (200 OK)
                     if resp.status == 200:
