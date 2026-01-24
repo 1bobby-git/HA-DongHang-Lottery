@@ -1,4 +1,5 @@
 # custom_components/donghang_lottery/api.py
+"""동행복권 API 클라이언트 - 강화된 차단 우회 기능 포함."""
 
 from __future__ import annotations
 
@@ -25,16 +26,63 @@ from yarl import URL
 
 _LOGGER = logging.getLogger(__name__)
 
-# User-Agent 목록 (차단 우회용 로테이션)
+# ============================================================================
+# 차단 우회 설정 (Anti-Bot Evasion Configuration)
+# ============================================================================
+
+# User-Agent 풀 (25개 - 다양한 브라우저/OS 조합)
 USER_AGENTS = [
+    # Chrome Windows (최신 버전들)
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    # Chrome macOS
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    # Firefox Windows
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0",
+    # Firefox macOS
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+    # Safari macOS
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15",
+    # Edge Windows
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0",
+    # Chrome Linux
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    # Firefox Linux
+    "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0",
+    # Windows 11 variants
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/117.0.0.0",
 ]
 
-USER_AGENT = USER_AGENTS[0]
+# User-Agent에 매칭되는 sec-ch-ua 헤더 (Chrome Client Hints)
+SEC_CH_UA_MAP = {
+    "Chrome/131": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    "Chrome/130": '"Google Chrome";v="130", "Chromium";v="130", "Not_A Brand";v="24"',
+    "Chrome/129": '"Google Chrome";v="129", "Chromium";v="129", "Not_A Brand";v="24"',
+    "Chrome/128": '"Google Chrome";v="128", "Chromium";v="128", "Not_A Brand";v="24"',
+    "Chrome/127": '"Google Chrome";v="127", "Chromium";v="127", "Not_A Brand";v="24"',
+    "Edg/131": '"Microsoft Edge";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    "Edg/130": '"Microsoft Edge";v="130", "Chromium";v="130", "Not_A Brand";v="24"',
+    "Edg/129": '"Microsoft Edge";v="129", "Chromium";v="129", "Not_A Brand";v="24"',
+    "OPR/117": '"Opera";v="117", "Chromium";v="131", "Not_A Brand";v="24"',
+}
+
+# 기본 User-Agent (초기값)
+USER_AGENT = random.choice(USER_AGENTS)
 
 
 def _get_random_user_agent() -> str:
@@ -42,19 +90,55 @@ def _get_random_user_agent() -> str:
     return random.choice(USER_AGENTS)
 
 
-BASE_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept-Language": "ko,en-US;q=0.9,en;q=0.8,ko-KR;q=0.7",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Cache-Control": "max-age=0",
-}
+def _get_sec_ch_ua(user_agent: str) -> str | None:
+    """User-Agent에 매칭되는 sec-ch-ua 헤더 반환."""
+    for key, value in SEC_CH_UA_MAP.items():
+        if key in user_agent:
+            return value
+    return None
+
+
+def _get_platform_from_ua(user_agent: str) -> str:
+    """User-Agent에서 플랫폼 추출."""
+    if "Windows" in user_agent:
+        return '"Windows"'
+    elif "Macintosh" in user_agent:
+        return '"macOS"'
+    elif "Linux" in user_agent:
+        return '"Linux"'
+    return '"Windows"'
+
+
+def _build_browser_headers(user_agent: str) -> dict[str, str]:
+    """현대 브라우저 헤더 생성 (Chrome Client Hints 포함)."""
+    headers = {
+        "User-Agent": user_agent,
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+        "Pragma": "no-cache",
+        "DNT": "1",
+    }
+
+    # Chrome/Edge/Opera에만 sec-ch-ua 헤더 추가
+    sec_ch_ua = _get_sec_ch_ua(user_agent)
+    if sec_ch_ua:
+        headers["sec-ch-ua"] = sec_ch_ua
+        headers["sec-ch-ua-mobile"] = "?0"
+        headers["sec-ch-ua-platform"] = _get_platform_from_ua(user_agent)
+
+    return headers
+
+
+# 기본 헤더 (동적으로 생성)
+BASE_HEADERS = _build_browser_headers(USER_AGENT)
 
 
 class DonghangLotteryError(Exception):
@@ -105,27 +189,36 @@ class WinningRecord:
 class DonghangLotteryClient:
     """동행복권 API 클라이언트.
 
-    차단 방지 기능:
-    - 요청 간 랜덤 딜레이 (1~3초)
-    - User-Agent 로테이션
-    - 자동 재시도 (exponential backoff)
-    - 세션 자동 복구
+    강화된 차단 방지 기능:
+    - 요청 간 랜덤 딜레이 (4~10초, Poisson 분포 기반)
+    - 25개 User-Agent 풀 + 프로액티브 로테이션
+    - Chrome Client Hints (sec-ch-ua) 헤더 지원
+    - 세마포어 기반 동시 요청 제한 (1개)
+    - 서킷 브레이커 패턴 (연속 실패 시 일시 중단)
+    - 강화된 지수 백오프 (15초 시작, 최대 180초)
+    - 세션 자동 갱신 (100 요청마다 또는 1시간마다)
+    - 요청 순서 랜덤화
     """
+
+    # 서킷 브레이커 상태
+    CIRCUIT_CLOSED = "closed"  # 정상
+    CIRCUIT_OPEN = "open"  # 차단됨 (요청 거부)
+    CIRCUIT_HALF_OPEN = "half_open"  # 테스트 중
 
     def __init__(
         self,
         session: ClientSession,
         username: str,
         password: str,
-        min_request_interval: float = 1.0,
-        max_request_interval: float = 3.0,
-        max_retries: int = 3,
-        retry_delay: float = 5.0,
+        min_request_interval: float = 4.0,  # 증가: 1.0 → 4.0
+        max_request_interval: float = 10.0,  # 증가: 3.0 → 10.0
+        max_retries: int = 5,  # 증가: 3 → 5
+        retry_delay: float = 15.0,  # 증가: 5.0 → 15.0
     ) -> None:
         self._session = session
         self._username = username
         self._password = password
-        self._timeout = 30
+        self._timeout = 45  # 증가: 30 → 45
         self._logged_in = False
         self._session_id: str | None = None
         self._wmonid: str | None = None
@@ -134,39 +227,181 @@ class DonghangLotteryClient:
         self._iteration_count = 1000
         self._block_size = 16
 
-        # 차단 방지 설정
-        self._min_request_interval = min_request_interval
-        self._max_request_interval = max_request_interval
+        # ============================================================
+        # 강화된 차단 방지 설정
+        # ============================================================
+        self._min_request_interval = max(min_request_interval, 4.0)  # 최소 4초 보장
+        self._max_request_interval = max(max_request_interval, 10.0)  # 최소 10초 보장
         self._max_retries = max_retries
         self._retry_delay = retry_delay
+        self._max_backoff_delay = 180.0  # 최대 백오프 3분
         self._last_request_time: float = 0
         self._request_lock = asyncio.Lock()
+
+        # 세마포어: 동시 요청 1개로 제한
+        self._request_semaphore = asyncio.Semaphore(1)
+
+        # User-Agent 관리
         self._current_user_agent = _get_random_user_agent()
+        self._ua_rotation_count = 0
+        self._ua_rotation_interval = random.randint(5, 15)  # 5~15 요청마다 UA 변경
+
+        # 서킷 브레이커
+        self._circuit_state = self.CIRCUIT_CLOSED
         self._consecutive_failures = 0
+        self._circuit_failure_threshold = 3  # 연속 3번 실패 시 서킷 열림
+        self._circuit_open_time: float = 0
+        self._circuit_cooldown = 60.0  # 서킷 열린 후 60초 대기
+
+        # 세션 갱신 추적
+        self._request_count = 0
+        self._session_start_time: float = time.time()
+        self._session_refresh_interval = 3600  # 1시간마다 세션 갱신
+        self._session_refresh_request_count = 100  # 100 요청마다 세션 갱신
+
+        # RSA 키 캐시 (불필요한 키 요청 방지)
+        self._cached_rsa_key: tuple[str, str] | None = None
+        self._rsa_key_time: float = 0
+        self._rsa_key_ttl = 300  # 5분간 RSA 키 캐시
+
+        _LOGGER.info(
+            "[DHLottery] 클라이언트 초기화 - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
+            self._min_request_interval,
+            self._max_request_interval,
+            self._max_retries,
+            len(USER_AGENTS),
+        )
 
     async def _throttle_request(self) -> None:
-        """요청 간 랜덤 딜레이 적용 (차단 방지)."""
+        """요청 간 랜덤 딜레이 적용 (Poisson 분포 기반 인간적인 패턴)."""
         async with self._request_lock:
             now = time.time()
             elapsed = now - self._last_request_time
-            min_interval = random.uniform(
+
+            # Poisson 분포를 시뮬레이션한 랜덤 간격 (더 인간적인 패턴)
+            # 평균 간격 주변에서 변동
+            avg_interval = (self._min_request_interval + self._max_request_interval) / 2
+            # 지수 분포로 자연스러운 변동 추가
+            jitter = random.expovariate(1 / (avg_interval * 0.3))
+            target_interval = random.uniform(
                 self._min_request_interval, self._max_request_interval
-            )
-            if elapsed < min_interval:
-                delay = min_interval - elapsed
-                _LOGGER.debug("Rate limiting: waiting %.2f seconds", delay)
+            ) + jitter
+
+            if elapsed < target_interval:
+                delay = target_interval - elapsed
+                _LOGGER.debug("[DHLottery] 스로틀링: %.2f초 대기", delay)
                 await asyncio.sleep(delay)
+
             self._last_request_time = time.time()
+            self._request_count += 1
+
+            # 프로액티브 UA 로테이션
+            self._ua_rotation_count += 1
+            if self._ua_rotation_count >= self._ua_rotation_interval:
+                self._rotate_user_agent()
+                self._ua_rotation_count = 0
+                self._ua_rotation_interval = random.randint(5, 15)
+                _LOGGER.debug("[DHLottery] 프로액티브 UA 로테이션 완료")
 
     def _rotate_user_agent(self) -> None:
-        """User-Agent 로테이션."""
-        self._current_user_agent = _get_random_user_agent()
+        """User-Agent 로테이션 (새 UA + 관련 헤더 갱신)."""
+        old_ua = self._current_user_agent
+        # 현재와 다른 UA 선택
+        available_uas = [ua for ua in USER_AGENTS if ua != old_ua]
+        self._current_user_agent = random.choice(available_uas) if available_uas else random.choice(USER_AGENTS)
+        _LOGGER.debug("[DHLottery] UA 로테이션: %s...", self._current_user_agent[:50])
 
     def _get_headers(self, base_headers: dict[str, str] | None = None) -> dict[str, str]:
-        """현재 User-Agent가 적용된 헤더 반환."""
-        headers = {**(base_headers or BASE_HEADERS)}
-        headers["User-Agent"] = self._current_user_agent
+        """현재 User-Agent가 적용된 완전한 브라우저 헤더 반환."""
+        # 현재 UA로 새 헤더 생성
+        headers = _build_browser_headers(self._current_user_agent)
+
+        # base_headers 병합
+        if base_headers:
+            for key, value in base_headers.items():
+                if key != "User-Agent":  # UA는 현재 것 유지
+                    headers[key] = value
+
         return headers
+
+    async def _check_circuit_breaker(self) -> bool:
+        """서킷 브레이커 상태 확인. True면 요청 가능, False면 차단."""
+        now = time.time()
+
+        if self._circuit_state == self.CIRCUIT_CLOSED:
+            return True
+
+        if self._circuit_state == self.CIRCUIT_OPEN:
+            # 쿨다운 시간 경과 확인
+            if now - self._circuit_open_time >= self._circuit_cooldown:
+                self._circuit_state = self.CIRCUIT_HALF_OPEN
+                _LOGGER.info("[DHLottery] 서킷 브레이커: HALF_OPEN 상태로 전환 (테스트 요청 허용)")
+                return True
+            else:
+                remaining = self._circuit_cooldown - (now - self._circuit_open_time)
+                _LOGGER.warning("[DHLottery] 서킷 브레이커 OPEN - %.0f초 후 재시도 가능", remaining)
+                return False
+
+        # HALF_OPEN 상태면 테스트 요청 허용
+        return True
+
+    def _record_success(self) -> None:
+        """성공 기록 - 서킷 브레이커 리셋."""
+        self._consecutive_failures = 0
+        if self._circuit_state != self.CIRCUIT_CLOSED:
+            _LOGGER.info("[DHLottery] 서킷 브레이커: CLOSED 상태로 복구")
+            self._circuit_state = self.CIRCUIT_CLOSED
+
+    def _record_failure(self) -> None:
+        """실패 기록 - 연속 실패 시 서킷 브레이커 열기."""
+        self._consecutive_failures += 1
+
+        if self._consecutive_failures >= self._circuit_failure_threshold:
+            if self._circuit_state != self.CIRCUIT_OPEN:
+                self._circuit_state = self.CIRCUIT_OPEN
+                self._circuit_open_time = time.time()
+                # 쿨다운 시간을 점진적으로 증가 (최대 5분)
+                self._circuit_cooldown = min(300, 60 * (2 ** (self._consecutive_failures - self._circuit_failure_threshold)))
+                _LOGGER.warning(
+                    "[DHLottery] 서킷 브레이커 OPEN - 연속 %d회 실패, %.0f초간 요청 중단",
+                    self._consecutive_failures,
+                    self._circuit_cooldown,
+                )
+
+    async def _check_session_refresh_needed(self) -> bool:
+        """세션 갱신 필요 여부 확인."""
+        now = time.time()
+        time_elapsed = now - self._session_start_time
+
+        # 1시간 경과 또는 100 요청 도달
+        if time_elapsed >= self._session_refresh_interval:
+            _LOGGER.info("[DHLottery] 세션 갱신 필요 (시간 경과: %.0f분)", time_elapsed / 60)
+            return True
+
+        if self._request_count >= self._session_refresh_request_count:
+            _LOGGER.info("[DHLottery] 세션 갱신 필요 (요청 횟수: %d)", self._request_count)
+            return True
+
+        return False
+
+    async def _refresh_session(self) -> None:
+        """세션 갱신 - 새 세션으로 재로그인."""
+        _LOGGER.info("[DHLottery] 세션 갱신 시작...")
+        self._logged_in = False
+        self._session_id = None
+        self._wmonid = None
+        self._cached_rsa_key = None
+        self._request_count = 0
+        self._session_start_time = time.time()
+
+        # 새 UA로 변경
+        self._rotate_user_agent()
+
+        try:
+            await self.async_login(force=True)
+            _LOGGER.info("[DHLottery] 세션 갱신 완료")
+        except Exception as err:
+            _LOGGER.warning("[DHLottery] 세션 갱신 실패: %s", err)
 
     async def async_login(self, force: bool = False) -> None:
         if self._logged_in and not force:
@@ -640,24 +875,60 @@ class DonghangLotteryClient:
         return data
 
     async def _get_rsa_key(self) -> tuple[str, str]:
-        headers = {
-            **BASE_HEADERS,
-            "Accept": "application/json",
+        """RSA 키 조회 (캐시 사용)."""
+        now = time.time()
+
+        # 캐시된 키가 유효하면 재사용
+        if self._cached_rsa_key and (now - self._rsa_key_time) < self._rsa_key_ttl:
+            _LOGGER.debug("[DHLottery] RSA 키 캐시 사용")
+            return self._cached_rsa_key
+
+        headers = self._get_headers()
+        headers.update({
+            "Accept": "application/json, text/javascript, */*; q=0.01",
             "X-Requested-With": "XMLHttpRequest",
             "Referer": "https://www.dhlottery.co.kr/user.do?method=login",
-        }
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+        })
+
         data = await self._get_json("https://www.dhlottery.co.kr/login/selectRsaModulus.do", headers=headers)
+
         if "data" in data and "rsaModulus" in data["data"]:
-            return data["data"]["rsaModulus"], data["data"]["publicExponent"]
-        if "rsaModulus" in data:
-            return data["rsaModulus"], data["publicExponent"]
-        raise DonghangLotteryResponseError("RSA modulus not found")
+            key = (data["data"]["rsaModulus"], data["data"]["publicExponent"])
+        elif "rsaModulus" in data:
+            key = (data["rsaModulus"], data["publicExponent"])
+        else:
+            raise DonghangLotteryResponseError("RSA modulus not found")
+
+        # 캐시 저장
+        self._cached_rsa_key = key
+        self._rsa_key_time = now
+        _LOGGER.debug("[DHLottery] RSA 키 획득 및 캐시 저장")
+        return key
 
     async def _warmup_login_pages(self) -> None:
-        await self._request("GET", "https://www.dhlottery.co.kr/", headers=BASE_HEADERS)
-        await self._request("GET", "https://www.dhlottery.co.kr/user.do?method=login", headers=BASE_HEADERS)
-        await self._request("GET", "https://www.dhlottery.co.kr/", headers=BASE_HEADERS)
-        await self._request("GET", "https://www.dhlottery.co.kr/user.do?method=login", headers=BASE_HEADERS)
+        """로그인 페이지 워밍업 (최소화된 요청).
+
+        기존: 4개 요청 → 개선: 2개 요청 (쿠키 획득에 필요한 최소한)
+        """
+        _LOGGER.debug("[DHLottery] 로그인 워밍업 시작")
+
+        # 첫 번째: 메인 페이지 (초기 쿠키 획득)
+        headers = self._get_headers()
+        await self._request("GET", "https://www.dhlottery.co.kr/", headers=headers, skip_throttle=False)
+
+        # 랜덤 지연 (인간적인 행동 시뮬레이션)
+        await asyncio.sleep(random.uniform(1.5, 3.0))
+
+        # 두 번째: 로그인 페이지 (세션 쿠키 갱신)
+        headers = self._get_headers()
+        headers["Referer"] = "https://www.dhlottery.co.kr/"
+        headers["Sec-Fetch-Site"] = "same-origin"
+        await self._request("GET", "https://www.dhlottery.co.kr/user.do?method=login", headers=headers, skip_throttle=False)
+
+        _LOGGER.debug("[DHLottery] 로그인 워밍업 완료")
 
     def _rsa_encrypt(self, text: str, modulus: str, exponent: str) -> str:
         key_spec = RSA.construct((int(modulus, 16), int(exponent, 16)))
@@ -952,93 +1223,166 @@ class DonghangLotteryClient:
         params: dict[str, Any] | None = None,
         skip_throttle: bool = False,
     ) -> ClientResponse:
-        """HTTP 요청 (차단 방지 기능 포함).
+        """HTTP 요청 (강화된 차단 방지 기능 포함).
 
-        - 요청 간 랜덤 딜레이
-        - 실패 시 자동 재시도 (exponential backoff)
-        - 401 시 자동 재로그인
-        - 403/429 시 User-Agent 로테이션
+        강화된 기능:
+        - 세마포어 기반 동시 요청 제한 (1개)
+        - 서킷 브레이커 패턴 (연속 실패 시 자동 중단)
+        - Poisson 분포 기반 랜덤 딜레이
+        - 프로액티브 User-Agent 로테이션
+        - 강화된 지수 백오프 (최대 180초)
+        - 세션 자동 갱신
+        - 401/403/429 에러 별도 처리
         """
-        # 스로틀링 적용
-        if not skip_throttle:
-            await self._throttle_request()
-
-        request_headers = self._get_headers(BASE_HEADERS)
-        if headers:
-            request_headers.update(headers)
-            # headers에 User-Agent가 없으면 현재 UA 사용
-            if "User-Agent" not in headers:
-                request_headers["User-Agent"] = self._current_user_agent
-
-        last_error: Exception | None = None
-
-        for attempt in range(self._max_retries + 1):
-            try:
-                resp = await self._session.request(
-                    method,
-                    url,
-                    headers=request_headers,
-                    data=data,
-                    params=params,
-                    timeout=self._timeout,
+        # 세마포어로 동시 요청 제한
+        async with self._request_semaphore:
+            # 서킷 브레이커 확인
+            if not await self._check_circuit_breaker():
+                raise DonghangLotteryError(
+                    f"서킷 브레이커 OPEN - 서버 차단 감지, {self._circuit_cooldown:.0f}초 후 재시도"
                 )
 
-                # 성공적인 응답
-                if resp.status == 200:
-                    self._consecutive_failures = 0
+            # 세션 갱신 필요 여부 확인
+            if await self._check_session_refresh_needed():
+                await self._refresh_session()
+
+            # 스로틀링 적용
+            if not skip_throttle:
+                await self._throttle_request()
+
+            # 헤더 구성 (현재 UA + Chrome Client Hints)
+            request_headers = self._get_headers()
+            if headers:
+                for key, value in headers.items():
+                    request_headers[key] = value
+
+            last_error: Exception | None = None
+            url_short = url.split("?")[0].split("/")[-1] or url  # 로깅용 짧은 URL
+
+            for attempt in range(self._max_retries + 1):
+                try:
+                    _LOGGER.debug(
+                        "[DHLottery] 요청: %s %s (시도 %d/%d)",
+                        method, url_short, attempt + 1, self._max_retries + 1
+                    )
+
+                    resp = await self._session.request(
+                        method,
+                        url,
+                        headers=request_headers,
+                        data=data,
+                        params=params,
+                        timeout=self._timeout,
+                    )
+
+                    # 성공적인 응답 (200 OK)
+                    if resp.status == 200:
+                        self._record_success()
+                        _LOGGER.debug("[DHLottery] ✓ 성공: %s (200)", url_short)
+                        return resp
+
+                    # 인증 실패 (401) - 재로그인 시도
+                    if resp.status == 401:
+                        _LOGGER.warning("[DHLottery] 401 Unauthorized - 재로그인 시도")
+                        self._logged_in = False
+                        self._cached_rsa_key = None  # RSA 키 캐시 무효화
+                        if attempt < self._max_retries:
+                            await asyncio.sleep(random.uniform(3, 6))
+                            await self.async_login(force=True)
+                            # 쿠키 헤더 갱신
+                            cookie_header = self._get_cookie_header()
+                            if cookie_header:
+                                request_headers["Cookie"] = cookie_header
+                            continue
+
+                    # 차단됨 (403 Forbidden)
+                    if resp.status == 403:
+                        self._record_failure()
+                        _LOGGER.warning(
+                            "[DHLottery] ⚠ 403 Forbidden - 차단 감지 (연속 %d회), UA 로테이션",
+                            self._consecutive_failures
+                        )
+
+                        # UA 로테이션 및 헤더 재구성
+                        self._rotate_user_agent()
+                        request_headers = self._get_headers()
+                        if headers:
+                            for key, value in headers.items():
+                                request_headers[key] = value
+
+                        if attempt < self._max_retries:
+                            # 강화된 지수 백오프 (15초 시작, 최대 180초)
+                            delay = min(
+                                self._max_backoff_delay,
+                                self._retry_delay * (2 ** attempt) + random.uniform(5, 15)
+                            )
+                            _LOGGER.info("[DHLottery] %.0f초 대기 후 재시도...", delay)
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # Rate Limit (429) - 더 긴 대기
+                    if resp.status == 429:
+                        self._record_failure()
+                        _LOGGER.warning(
+                            "[DHLottery] ⚠ 429 Rate Limited - 요청 제한 (연속 %d회)",
+                            self._consecutive_failures
+                        )
+
+                        # UA 로테이션
+                        self._rotate_user_agent()
+                        request_headers = self._get_headers()
+                        if headers:
+                            for key, value in headers.items():
+                                request_headers[key] = value
+
+                        if attempt < self._max_retries:
+                            # 429는 더 긴 대기 (30초 시작)
+                            delay = min(
+                                self._max_backoff_delay,
+                                30 * (2 ** attempt) + random.uniform(10, 30)
+                            )
+                            _LOGGER.info("[DHLottery] Rate limit - %.0f초 대기 후 재시도...", delay)
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # 서버 에러 (5xx)
+                    if resp.status >= 500:
+                        _LOGGER.warning("[DHLottery] 서버 에러 %s - 재시도", resp.status)
+                        if attempt < self._max_retries:
+                            delay = self._retry_delay * (attempt + 1) + random.uniform(1, 5)
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # 기타 에러
+                    if resp.status >= 400:
+                        _LOGGER.warning("[DHLottery] HTTP 에러 %s: %s", resp.status, url_short)
+
                     return resp
 
-                # 인증 실패 - 재로그인 시도
-                if resp.status == 401:
-                    _LOGGER.warning("401 Unauthorized - attempting re-login")
-                    self._logged_in = False
-                    if attempt < self._max_retries:
-                        await self.async_login(force=True)
-                        # 쿠키 헤더 갱신
-                        cookie_header = self._get_cookie_header()
-                        if cookie_header:
-                            request_headers["Cookie"] = cookie_header
-                        continue
-
-                # 차단됨 - User-Agent 교체 후 재시도
-                if resp.status in (403, 429):
-                    self._consecutive_failures += 1
-                    self._rotate_user_agent()
-                    request_headers["User-Agent"] = self._current_user_agent
+                except asyncio.TimeoutError as err:
+                    last_error = err
                     _LOGGER.warning(
-                        "Blocked (status=%s) - rotating User-Agent, attempt %d/%d",
-                        resp.status,
-                        attempt + 1,
-                        self._max_retries + 1,
+                        "[DHLottery] 타임아웃: %s (시도 %d/%d)",
+                        url_short, attempt + 1, self._max_retries + 1
                     )
                     if attempt < self._max_retries:
-                        # Exponential backoff
-                        delay = self._retry_delay * (2 ** attempt) + random.uniform(0, 1)
-                        _LOGGER.debug("Waiting %.2f seconds before retry", delay)
+                        delay = self._retry_delay * (attempt + 1) + random.uniform(2, 8)
                         await asyncio.sleep(delay)
                         continue
 
-                # 기타 에러
-                if resp.status >= 400:
-                    _LOGGER.warning("HTTP error %s for %s", resp.status, url)
+                except Exception as err:
+                    last_error = err
+                    _LOGGER.warning("[DHLottery] 요청 에러: %s - %s", url_short, err)
+                    if attempt < self._max_retries:
+                        delay = self._retry_delay + random.uniform(1, 5)
+                        await asyncio.sleep(delay)
+                        continue
 
-                return resp
-
-            except asyncio.TimeoutError as err:
-                last_error = err
-                _LOGGER.warning("Request timeout for %s, attempt %d/%d", url, attempt + 1, self._max_retries + 1)
-                if attempt < self._max_retries:
-                    await asyncio.sleep(self._retry_delay * (attempt + 1))
-                    continue
-
-            except Exception as err:
-                last_error = err
-                _LOGGER.warning("Request error for %s: %s", url, err)
-                if attempt < self._max_retries:
-                    await asyncio.sleep(self._retry_delay)
-                    continue
-
-        raise DonghangLotteryError(f"Request failed after {self._max_retries + 1} attempts: {url}") from last_error
+            # 모든 재시도 실패
+            self._record_failure()
+            raise DonghangLotteryError(
+                f"요청 실패 ({self._max_retries + 1}회 시도 후): {url_short}"
+            ) from last_error
 
     async def _get_json(
         self,

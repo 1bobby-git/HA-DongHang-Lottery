@@ -1,9 +1,11 @@
 # custom_components/donghang_lottery/__init__.py
+"""동행복권 Home Assistant 통합 - 강화된 차단 우회 기능 포함."""
 
 from __future__ import annotations
 
 import logging
 import math
+import random
 from datetime import timedelta
 from typing import Any
 
@@ -74,8 +76,15 @@ from .storage import MyNumberStore
 LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "button"]
-# 세션 유지를 위한 keepalive (30분 간격)
-KEEPALIVE_INTERVAL = timedelta(minutes=30)
+
+# 세션 유지를 위한 keepalive (랜덤화: 25~40분 간격으로 예측 불가능하게)
+# 고정 간격은 봇으로 탐지될 수 있음
+def _get_random_keepalive_interval() -> timedelta:
+    """랜덤 keepalive 간격 생성 (25~40분)."""
+    minutes = random.randint(25, 40)
+    return timedelta(minutes=minutes)
+
+KEEPALIVE_INTERVAL = _get_random_keepalive_interval()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

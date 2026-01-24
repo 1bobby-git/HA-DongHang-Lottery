@@ -1,17 +1,24 @@
 # custom_components/donghang_lottery/const.py
+"""동행복권 통합 상수 정의."""
 
 from __future__ import annotations
 
-DOMAIN = "donghang_lottery"
+from typing import Final
 
-CONF_USERNAME = "username"
-CONF_PASSWORD = "password"
-CONF_LOCATION_ENTITY = "location_entity"
-CONF_MIN_REQUEST_INTERVAL = "min_request_interval"
-CONF_MAX_REQUEST_INTERVAL = "max_request_interval"
+DOMAIN: Final = "donghang_lottery"
 
-DEFAULT_MIN_REQUEST_INTERVAL = 1.0
-DEFAULT_MAX_REQUEST_INTERVAL = 3.0
+# 인증 설정
+CONF_USERNAME: Final = "username"
+CONF_PASSWORD: Final = "password"
+CONF_LOCATION_ENTITY: Final = "location_entity"
+
+# 차단 우회 설정
+CONF_MIN_REQUEST_INTERVAL: Final = "min_request_interval"
+CONF_MAX_REQUEST_INTERVAL: Final = "max_request_interval"
+
+# 기본값 (강화됨: 차단 우회를 위해 요청 간격 증가)
+DEFAULT_MIN_REQUEST_INTERVAL: Final = 4.0  # 증가: 1.0 → 4.0
+DEFAULT_MAX_REQUEST_INTERVAL: Final = 10.0  # 증가: 3.0 → 10.0
 
 ATTR_ENTRY_ID = "entry_id"
 ATTR_DRAW_NO = "draw_no"
