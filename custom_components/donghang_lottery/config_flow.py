@@ -12,8 +12,10 @@ from .const import (
     CONF_LOCATION_ENTITY,
     CONF_MAX_REQUEST_INTERVAL,
     CONF_MIN_REQUEST_INTERVAL,
+    CONF_USE_PROXY,
     DEFAULT_MAX_REQUEST_INTERVAL,
     DEFAULT_MIN_REQUEST_INTERVAL,
+    DEFAULT_USE_PROXY,
     DOMAIN,
 )
 
@@ -82,6 +84,13 @@ class DonghangLotteryOptionsFlowHandler(config_entries.OptionsFlow):
                         self._entry.data.get(CONF_MAX_REQUEST_INTERVAL, DEFAULT_MAX_REQUEST_INTERVAL),
                     ),
                 ): vol.Coerce(float),
+                vol.Optional(
+                    CONF_USE_PROXY,
+                    default=self._entry.options.get(
+                        CONF_USE_PROXY,
+                        self._entry.data.get(CONF_USE_PROXY, DEFAULT_USE_PROXY),
+                    ),
+                ): bool,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

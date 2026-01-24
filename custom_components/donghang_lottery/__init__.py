@@ -48,8 +48,10 @@ from .const import (
     CONF_LOCATION_ENTITY,
     CONF_MAX_REQUEST_INTERVAL,
     CONF_MIN_REQUEST_INTERVAL,
+    CONF_USE_PROXY,
     DEFAULT_MAX_REQUEST_INTERVAL,
     DEFAULT_MIN_REQUEST_INTERVAL,
+    DEFAULT_USE_PROXY,
     DOMAIN,
     LOTTERY_LOTTO645,
     LOTTERY_PENSION720,
@@ -102,6 +104,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_MAX_REQUEST_INTERVAL,
         entry.data.get(CONF_MAX_REQUEST_INTERVAL, DEFAULT_MAX_REQUEST_INTERVAL),
     )
+    # 프록시 설정 (IP 차단 우회 - 기본값 True)
+    use_proxy = entry.options.get(
+        CONF_USE_PROXY,
+        entry.data.get(CONF_USE_PROXY, DEFAULT_USE_PROXY),
+    )
 
     session = async_get_clientsession(hass)
     client = DonghangLotteryClient(
@@ -110,6 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password,
         min_request_interval=min_interval,
         max_request_interval=max_interval,
+        use_proxy=use_proxy,
     )
     coordinator = DonghangLotteryCoordinator(hass, client)
 
