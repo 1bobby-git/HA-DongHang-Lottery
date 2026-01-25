@@ -189,16 +189,12 @@ class WinningRecord:
 class DonghangLotteryClient:
     """동행복권 API 클라이언트.
 
-    강화된 차단 방지 기능:
-    - 요청 간 랜덤 딜레이 (4~10초, Poisson 분포 기반)
-    - 25개 User-Agent 풀 + 프로액티브 로테이션
-    - Chrome Client Hints (sec-ch-ua) 헤더 지원
-    - 세마포어 기반 동시 요청 제한 (1개)
-    - 서킷 브레이커 패턴 (연속 실패 시 일시 중단)
-    - 강화된 지수 백오프 (15초 시작, 최대 180초)
-    - 세션 자동 갱신 (100 요청마다 또는 1시간마다)
-    - 요청 순서 랜덤화
-    - **프록시 자동 로테이션 (IP 차단 우회)**
+    v0.5.0 - 강화된 직접 연결 전략 (프록시 없이 안정적 동작):
+    - 더 긴 요청 간격 (8~20초, 인간적 패턴)
+    - 완전한 브라우저 시뮬레이션 (쿠키 워밍, 네비게이션 패턴)
+    - 서킷 브레이커 + 긴 쿨다운 (IP 차단 시 자동 복구 대기)
+    - 요청 실패 시 세션 완전 재초기화
+    - 프록시 기능 제거 (무료 프록시는 효과 없음)
     """
 
     # 서킷 브레이커 상태
@@ -211,16 +207,16 @@ class DonghangLotteryClient:
         session: ClientSession,
         username: str,
         password: str,
-        min_request_interval: float = 4.0,  # 증가: 1.0 → 4.0
-        max_request_interval: float = 10.0,  # 증가: 3.0 → 10.0
-        max_retries: int = 5,  # 증가: 3 → 5
-        retry_delay: float = 15.0,  # 증가: 5.0 → 15.0
-        use_proxy: bool = True,  # 프록시 사용 여부
+        min_request_interval: float = 8.0,   # 더 긴 간격: 8초
+        max_request_interval: float = 20.0,  # 더 긴 간격: 20초
+        max_retries: int = 3,                # 재시도 줄임: 3회
+        retry_delay: float = 30.0,           # 더 긴 대기: 30초
+        use_proxy: bool = False,             # 프록시 비활성화 (효과 없음)
     ) -> None:
         self._session = session
         self._username = username
         self._password = password
-        self._timeout = 45  # 증가: 30 → 45
+        self._timeout = 60  # 타임아웃 증가: 60초
         self._logged_in = False
         self._session_id: str | None = None
         self._wmonid: str | None = None
@@ -230,131 +226,58 @@ class DonghangLotteryClient:
         self._block_size = 16
 
         # ============================================================
-        # 강화된 차단 방지 설정
+        # 강화된 차단 방지 설정 (직접 연결 최적화)
         # ============================================================
-        self._min_request_interval = max(min_request_interval, 4.0)  # 최소 4초 보장
-        self._max_request_interval = max(max_request_interval, 10.0)  # 최소 10초 보장
+        self._min_request_interval = max(min_request_interval, 8.0)   # 최소 8초 보장
+        self._max_request_interval = max(max_request_interval, 20.0)  # 최소 20초 보장
         self._max_retries = max_retries
         self._retry_delay = retry_delay
-        self._max_backoff_delay = 180.0  # 최대 백오프 3분
+        self._max_backoff_delay = 300.0  # 최대 백오프 5분
         self._last_request_time: float = 0
         self._request_lock = asyncio.Lock()
 
         # 세마포어: 동시 요청 1개로 제한
         self._request_semaphore = asyncio.Semaphore(1)
 
-        # User-Agent 관리
+        # User-Agent 관리 (세션 내 고정)
         self._current_user_agent = _get_random_user_agent()
         self._ua_rotation_count = 0
-        self._ua_rotation_interval = random.randint(5, 15)  # 5~15 요청마다 UA 변경
+        self._ua_rotation_interval = random.randint(20, 40)  # 세션 내 UA 고정 (로테이션 줄임)
 
-        # 서킷 브레이커
+        # 서킷 브레이커 (더 긴 쿨다운)
         self._circuit_state = self.CIRCUIT_CLOSED
         self._consecutive_failures = 0
-        self._circuit_failure_threshold = 3  # 연속 3번 실패 시 서킷 열림
+        self._circuit_failure_threshold = 2  # 연속 2번 실패 시 서킷 열림
         self._circuit_open_time: float = 0
-        self._circuit_cooldown = 60.0  # 서킷 열린 후 60초 대기
+        self._circuit_cooldown = 180.0  # 서킷 열린 후 3분 대기 (증가)
 
-        # 세션 갱신 추적
+        # 세션 갱신 추적 (더 자주 갱신)
         self._request_count = 0
         self._session_start_time: float = time.time()
-        self._session_refresh_interval = 3600  # 1시간마다 세션 갱신
-        self._session_refresh_request_count = 100  # 100 요청마다 세션 갱신
+        self._session_refresh_interval = 1800  # 30분마다 세션 갱신 (줄임)
+        self._session_refresh_request_count = 50  # 50 요청마다 세션 갱신 (줄임)
 
         # RSA 키 캐시 (불필요한 키 요청 방지)
         self._cached_rsa_key: tuple[str, str] | None = None
         self._rsa_key_time: float = 0
-        self._rsa_key_ttl = 300  # 5분간 RSA 키 캐시
+        self._rsa_key_ttl = 180  # 3분간 RSA 키 캐시 (줄임)
 
-        # ============================================================
-        # 프록시 설정 (IP 차단 우회)
-        # ============================================================
-        self._use_proxy = use_proxy
-        self._proxy_manager: Any = None  # ProxyManager 인스턴스
-        self._proxy_initialized = False
-        self._proxy_init_lock = asyncio.Lock()
-        self._proxy_session: aiohttp.ClientSession | None = None  # 프록시용 세션 (SSL 완화)
+        # 세션 워밍업 상태
+        self._session_warmed_up = False
+        self._cookies_initialized = False
+
+        # 프록시 비활성화 (무료 프록시는 효과 없음)
+        self._use_proxy = False
+        self._proxy_manager = None
+        self._proxy_initialized = True  # 스킵
 
         _LOGGER.info(
-            "[DHLottery] 클라이언트 초기화 - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개, 프록시: %s",
+            "[DHLottery] 클라이언트 초기화 (v0.5.0 강화 직접 연결) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
             self._min_request_interval,
             self._max_request_interval,
             self._max_retries,
             len(USER_AGENTS),
-            "활성화" if use_proxy else "비활성화",
         )
-
-    async def _init_proxy_manager(self) -> bool:
-        """프록시 관리자 초기화 (지연 로딩)."""
-        if not self._use_proxy:
-            return False
-
-        if self._proxy_initialized:
-            return self._proxy_manager is not None
-
-        async with self._proxy_init_lock:
-            if self._proxy_initialized:
-                return self._proxy_manager is not None
-
-            try:
-                from .proxy_manager import ProxyManager
-
-                _LOGGER.info("[DHLottery] 프록시 관리자 초기화 중...")
-                self._proxy_manager = ProxyManager(self._session)
-                success = await self._proxy_manager.initialize()
-
-                if success:
-                    _LOGGER.info(
-                        "[DHLottery] ✓ 프록시 초기화 완료: %d개 프록시 사용 가능",
-                        self._proxy_manager.proxy_count,
-                    )
-                else:
-                    _LOGGER.warning("[DHLottery] 프록시 초기화 실패 - 직접 연결 사용")
-                    self._proxy_manager = None
-
-                self._proxy_initialized = True
-                return success
-
-            except ImportError as err:
-                _LOGGER.warning("[DHLottery] 프록시 모듈 로드 실패: %s", err)
-                self._proxy_initialized = True
-                return False
-            except Exception as err:
-                _LOGGER.warning("[DHLottery] 프록시 초기화 에러: %s", err)
-                self._proxy_initialized = True
-                return False
-
-    async def _get_proxy_url(self) -> str | None:
-        """현재 프록시 URL 반환."""
-        if not self._use_proxy or not self._proxy_manager:
-            return None
-        return await self._proxy_manager.get_proxy()
-
-    async def _rotate_proxy(self, failed: bool = True) -> str | None:
-        """프록시 로테이션."""
-        if not self._proxy_manager:
-            return None
-        return await self._proxy_manager.rotate_proxy(failed=failed)
-
-    async def _get_proxy_session(self) -> aiohttp.ClientSession:
-        """프록시용 세션 반환 (SSL 검증 완화)."""
-        if self._proxy_session is None or self._proxy_session.closed:
-            import ssl
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-
-            connector = aiohttp.TCPConnector(ssl=ssl_context, limit=10)
-            self._proxy_session = aiohttp.ClientSession(connector=connector)
-            _LOGGER.debug("[DHLottery] 프록시용 세션 생성 (SSL 검증 완화)")
-
-        return self._proxy_session
-
-    async def _close_proxy_session(self) -> None:
-        """프록시용 세션 닫기."""
-        if self._proxy_session and not self._proxy_session.closed:
-            await self._proxy_session.close()
-            self._proxy_session = None
 
     async def _throttle_request(self) -> None:
         """요청 간 랜덤 딜레이 적용 (Poisson 분포 기반 인간적인 패턴)."""
@@ -486,6 +409,35 @@ class DonghangLotteryClient:
             _LOGGER.info("[DHLottery] 세션 갱신 완료")
         except Exception as err:
             _LOGGER.warning("[DHLottery] 세션 갱신 실패: %s", err)
+
+    async def _full_session_reset(self) -> None:
+        """세션 완전 재초기화 (차단 감지 시).
+
+        v0.5.0: 모든 상태를 초기화하고 새로운 브라우저 세션처럼 시작.
+        """
+        _LOGGER.info("[DHLottery] 세션 완전 재초기화...")
+
+        # 모든 세션 상태 초기화
+        self._logged_in = False
+        self._session_id = None
+        self._wmonid = None
+        self._cached_rsa_key = None
+        self._rsa_key_time = 0
+        self._request_count = 0
+        self._session_start_time = time.time()
+        self._cookies_initialized = False
+        self._session_warmed_up = False
+
+        # 쿠키 삭제
+        try:
+            self._session.cookie_jar.clear()
+        except Exception:
+            pass
+
+        # 새 UA로 변경
+        self._rotate_user_agent()
+
+        _LOGGER.info("[DHLottery] ✓ 세션 완전 재초기화 완료")
 
     async def async_login(self, force: bool = False) -> None:
         if self._logged_in and not force:
@@ -993,26 +945,51 @@ class DonghangLotteryClient:
         return key
 
     async def _warmup_login_pages(self) -> None:
-        """로그인 페이지 워밍업 (최소화된 요청).
+        """로그인 페이지 워밍업 (완전한 브라우저 시뮬레이션).
 
-        기존: 4개 요청 → 개선: 2개 요청 (쿠키 획득에 필요한 최소한)
+        v0.5.0: 실제 사용자처럼 페이지를 순서대로 방문하여 쿠키와 세션 초기화.
         """
-        _LOGGER.debug("[DHLottery] 로그인 워밍업 시작")
+        _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작...")
 
-        # 첫 번째: 메인 페이지 (초기 쿠키 획득)
+        # 1단계: 메인 페이지 방문 (첫 방문자처럼)
         headers = self._get_headers()
-        await self._request("GET", "https://www.dhlottery.co.kr/", headers=headers, skip_throttle=False)
+        headers["Sec-Fetch-Site"] = "none"  # 직접 URL 입력
+        headers["Sec-Fetch-User"] = "?1"
 
-        # 랜덤 지연 (인간적인 행동 시뮬레이션)
-        await asyncio.sleep(random.uniform(1.5, 3.0))
+        try:
+            await self._request(
+                "GET",
+                "https://www.dhlottery.co.kr/",
+                headers=headers,
+                skip_throttle=True,  # 워밍업 중 스로틀 스킵
+            )
+        except Exception as err:
+            _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패: %s", err)
 
-        # 두 번째: 로그인 페이지 (세션 쿠키 갱신)
+        # 사람처럼 페이지 읽는 시간 (3~6초)
+        await asyncio.sleep(random.uniform(3.0, 6.0))
+
+        # 2단계: 메인 페이지에서 로그인 링크 클릭 (네비게이션)
         headers = self._get_headers()
         headers["Referer"] = "https://www.dhlottery.co.kr/"
         headers["Sec-Fetch-Site"] = "same-origin"
-        await self._request("GET", "https://www.dhlottery.co.kr/user.do?method=login", headers=headers, skip_throttle=False)
 
-        _LOGGER.debug("[DHLottery] 로그인 워밍업 완료")
+        try:
+            await self._request(
+                "GET",
+                "https://www.dhlottery.co.kr/user.do?method=login",
+                headers=headers,
+                skip_throttle=True,
+            )
+        except Exception as err:
+            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패: %s", err)
+
+        # 로그인 폼 보는 시간 (2~4초)
+        await asyncio.sleep(random.uniform(2.0, 4.0))
+
+        self._cookies_initialized = True
+        self._session_warmed_up = True
+        _LOGGER.info("[DHLottery] ✓ 브라우저 세션 워밍업 완료")
 
     def _rsa_encrypt(self, text: str, modulus: str, exponent: str) -> str:
         key_spec = RSA.construct((int(modulus, 16), int(exponent, 16)))
@@ -1307,17 +1284,13 @@ class DonghangLotteryClient:
         params: dict[str, Any] | None = None,
         skip_throttle: bool = False,
     ) -> ClientResponse:
-        """HTTP 요청 (강화된 차단 방지 + 프록시 우회 기능 포함).
+        """HTTP 요청 (v0.5.0 강화된 직접 연결).
 
-        강화된 기능:
-        - 세마포어 기반 동시 요청 제한 (1개)
-        - 서킷 브레이커 패턴 (연속 실패 시 자동 중단)
-        - Poisson 분포 기반 랜덤 딜레이
-        - 프로액티브 User-Agent 로테이션
-        - 강화된 지수 백오프 (최대 180초)
-        - 세션 자동 갱신
-        - 401/403/429 에러 별도 처리
-        - **프록시 자동 로테이션 (IP 차단 우회)**
+        프록시 없이 안정적으로 동작하는 직접 연결 전략:
+        - 더 긴 요청 간격 (8~20초)
+        - 서킷 브레이커 + 긴 쿨다운 (차단 감지 시 자동 복구 대기)
+        - 세션 완전 재초기화 (차단 시)
+        - 인간적인 재시도 패턴
         """
         # 세마포어로 동시 요청 제한
         async with self._request_semaphore:
@@ -1331,18 +1304,9 @@ class DonghangLotteryClient:
             if await self._check_session_refresh_needed():
                 await self._refresh_session()
 
-            # 스로틀링 적용
+            # 스로틀링 적용 (더 긴 간격)
             if not skip_throttle:
                 await self._throttle_request()
-
-            # 프록시 초기화 (첫 요청 시 지연 로딩)
-            if self._use_proxy and not self._proxy_initialized:
-                await self._init_proxy_manager()
-
-            # 현재 프록시 URL 가져오기
-            proxy_url = await self._get_proxy_url()
-            if proxy_url:
-                _LOGGER.debug("[DHLottery] 프록시 사용: %s", proxy_url.split("@")[-1])
 
             # 헤더 구성 (현재 UA + Chrome Client Hints)
             request_headers = self._get_headers()
@@ -1351,62 +1315,44 @@ class DonghangLotteryClient:
                     request_headers[key] = value
 
             last_error: Exception | None = None
-            url_short = url.split("?")[0].split("/")[-1] or url  # 로깅용 짧은 URL
+            url_short = url.split("?")[0].split("/")[-1] or url
 
             for attempt in range(self._max_retries + 1):
                 try:
                     _LOGGER.debug(
-                        "[DHLottery] 요청: %s %s (시도 %d/%d, 프록시: %s)",
+                        "[DHLottery] 요청: %s %s (시도 %d/%d)",
                         method, url_short, attempt + 1, self._max_retries + 1,
-                        "사용" if proxy_url else "직접",
                     )
 
-                    # 프록시 사용 시 SSL 검증 완화된 세션 사용
-                    if proxy_url:
-                        session = await self._get_proxy_session()
-                        resp = await session.request(
-                            method,
-                            url,
-                            headers=request_headers,
-                            data=data,
-                            params=params,
-                            timeout=aiohttp.ClientTimeout(total=self._timeout),
-                            proxy=proxy_url,
-                        )
-                    else:
-                        resp = await self._session.request(
-                            method,
-                            url,
-                            headers=request_headers,
-                            data=data,
-                            params=params,
-                            timeout=self._timeout,
-                        )
+                    # 직접 연결
+                    resp = await self._session.request(
+                        method,
+                        url,
+                        headers=request_headers,
+                        data=data,
+                        params=params,
+                        timeout=self._timeout,
+                    )
 
                     # 성공적인 응답 (200 OK)
                     if resp.status == 200:
                         self._record_success()
-                        # 프록시 성공 기록
-                        if self._proxy_manager:
-                            self._proxy_manager.record_success()
                         _LOGGER.debug("[DHLottery] ✓ 성공: %s (200)", url_short)
                         return resp
 
-                    # 인증 실패 (401) - 재로그인 시도
+                    # 인증 실패 (401) - 세션 완전 재초기화
                     if resp.status == 401:
-                        _LOGGER.warning("[DHLottery] 401 Unauthorized - 재로그인 시도")
-                        self._logged_in = False
-                        self._cached_rsa_key = None  # RSA 키 캐시 무효화
+                        _LOGGER.warning("[DHLottery] 401 Unauthorized - 세션 재초기화")
+                        await self._full_session_reset()
                         if attempt < self._max_retries:
-                            await asyncio.sleep(random.uniform(3, 6))
+                            await asyncio.sleep(random.uniform(5, 10))
                             await self.async_login(force=True)
-                            # 쿠키 헤더 갱신
                             cookie_header = self._get_cookie_header()
                             if cookie_header:
                                 request_headers["Cookie"] = cookie_header
                             continue
 
-                    # 차단됨 (403 Forbidden) - 프록시 로테이션 시도
+                    # 차단됨 (403 Forbidden) - 긴 대기 후 재시도
                     if resp.status == 403:
                         self._record_failure()
                         _LOGGER.warning(
@@ -1414,67 +1360,33 @@ class DonghangLotteryClient:
                             self._consecutive_failures
                         )
 
-                        # 프록시 실패 기록 및 로테이션
-                        if self._proxy_manager:
-                            self._proxy_manager.record_failure()
-                            new_proxy = await self._rotate_proxy(failed=True)
-                            if new_proxy:
-                                proxy_url = new_proxy
-                                _LOGGER.info(
-                                    "[DHLottery] 프록시 로테이션: %s",
-                                    new_proxy.split("@")[-1]
-                                )
-
-                        # UA 로테이션 및 헤더 재구성
-                        self._rotate_user_agent()
-                        request_headers = self._get_headers()
-                        if headers:
-                            for key, value in headers.items():
-                                request_headers[key] = value
-
                         if attempt < self._max_retries:
-                            # 강화된 지수 백오프 (15초 시작, 최대 180초)
+                            # 세션 재초기화 + 긴 대기
+                            await self._full_session_reset()
                             delay = min(
                                 self._max_backoff_delay,
-                                self._retry_delay * (2 ** attempt) + random.uniform(5, 15)
+                                self._retry_delay * (2 ** attempt) + random.uniform(30, 60)
                             )
-                            _LOGGER.info("[DHLottery] %.0f초 대기 후 재시도...", delay)
+                            _LOGGER.info("[DHLottery] 차단 감지 - %.0f초 대기 후 재시도...", delay)
                             await asyncio.sleep(delay)
+                            # 재워밍업
+                            await self._warmup_login_pages()
                             continue
 
-                    # Rate Limit (429) - 프록시 로테이션 + 더 긴 대기
+                    # Rate Limit (429) - 더 긴 대기
                     if resp.status == 429:
                         self._record_failure()
                         _LOGGER.warning(
-                            "[DHLottery] ⚠ 429 Rate Limited - 요청 제한 (연속 %d회)",
+                            "[DHLottery] ⚠ 429 Rate Limited (연속 %d회)",
                             self._consecutive_failures
                         )
 
-                        # 프록시 실패 기록 및 로테이션
-                        if self._proxy_manager:
-                            self._proxy_manager.record_failure()
-                            new_proxy = await self._rotate_proxy(failed=True)
-                            if new_proxy:
-                                proxy_url = new_proxy
-                                _LOGGER.info(
-                                    "[DHLottery] 프록시 로테이션 (429): %s",
-                                    new_proxy.split("@")[-1]
-                                )
-
-                        # UA 로테이션
-                        self._rotate_user_agent()
-                        request_headers = self._get_headers()
-                        if headers:
-                            for key, value in headers.items():
-                                request_headers[key] = value
-
                         if attempt < self._max_retries:
-                            # 429는 더 긴 대기 (30초 시작)
                             delay = min(
                                 self._max_backoff_delay,
-                                30 * (2 ** attempt) + random.uniform(10, 30)
+                                60 * (2 ** attempt) + random.uniform(30, 60)
                             )
-                            _LOGGER.info("[DHLottery] Rate limit - %.0f초 대기 후 재시도...", delay)
+                            _LOGGER.info("[DHLottery] Rate limit - %.0f초 대기...", delay)
                             await asyncio.sleep(delay)
                             continue
 
@@ -1482,7 +1394,7 @@ class DonghangLotteryClient:
                     if resp.status >= 500:
                         _LOGGER.warning("[DHLottery] 서버 에러 %s - 재시도", resp.status)
                         if attempt < self._max_retries:
-                            delay = self._retry_delay * (attempt + 1) + random.uniform(1, 5)
+                            delay = self._retry_delay + random.uniform(5, 15)
                             await asyncio.sleep(delay)
                             continue
 
@@ -1498,34 +1410,16 @@ class DonghangLotteryClient:
                         "[DHLottery] 타임아웃: %s (시도 %d/%d)",
                         url_short, attempt + 1, self._max_retries + 1
                     )
-
-                    # 프록시 타임아웃 시 로테이션 시도
-                    if self._proxy_manager and proxy_url:
-                        new_proxy = await self._rotate_proxy(failed=True)
-                        if new_proxy:
-                            proxy_url = new_proxy
-                            _LOGGER.info("[DHLottery] 타임아웃으로 프록시 로테이션")
-
                     if attempt < self._max_retries:
-                        delay = self._retry_delay * (attempt + 1) + random.uniform(2, 8)
+                        delay = self._retry_delay + random.uniform(10, 20)
                         await asyncio.sleep(delay)
                         continue
 
                 except Exception as err:
                     last_error = err
                     _LOGGER.warning("[DHLottery] 요청 에러: %s - %s", url_short, err)
-
-                    # 프록시 에러 시 로테이션 시도 (연결 관련 에러)
-                    if self._proxy_manager and proxy_url:
-                        error_str = str(err).lower()
-                        if any(x in error_str for x in ["proxy", "connect", "connection", "refused"]):
-                            new_proxy = await self._rotate_proxy(failed=True)
-                            if new_proxy:
-                                proxy_url = new_proxy
-                                _LOGGER.info("[DHLottery] 연결 에러로 프록시 로테이션")
-
                     if attempt < self._max_retries:
-                        delay = self._retry_delay + random.uniform(1, 5)
+                        delay = self._retry_delay + random.uniform(5, 15)
                         await asyncio.sleep(delay)
                         continue
 
