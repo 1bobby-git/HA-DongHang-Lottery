@@ -96,14 +96,18 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             self._schedule_background_retry()
 
     def _set_default_data(self) -> None:
-        """기본 빈 데이터 설정 (연결 실패 시)."""
-        self.data = DonghangLotteryData(
+        """기본 빈 데이터 설정 (연결 실패 시).
+
+        async_set_updated_data()를 사용하여 last_update_success=True로 설정.
+        이렇게 해야 엔티티가 'unavailable'이 아닌 기본값(0)으로 표시됨.
+        """
+        self.async_set_updated_data(DonghangLotteryData(
             account=AccountSummary(
                 total_amount=0,
                 unconfirmed_count=0,
                 unclaimed_high_value_count=0,
             ),
-        )
+        ))
 
     def _schedule_background_retry(self) -> None:
         """백그라운드 데이터 재시도 스케줄 (5분 후)."""

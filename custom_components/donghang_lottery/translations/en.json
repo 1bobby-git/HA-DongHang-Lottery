@@ -3,11 +3,19 @@
     "step": {
       "user": {
         "title": "Donghang Lottery",
-        "description": "Enter your Donghang Lottery credentials. [Donghang Lottery](https://www.dhlottery.co.kr/)\nLocation entity (optional): nearby search reference",
+        "description": "Enter your Donghang Lottery credentials and update settings. [Donghang Lottery](https://www.dhlottery.co.kr/)",
         "data": {
           "username": "Username",
           "password": "Password",
-          "location_entity": "Location entity"
+          "location_entity": "Location entity",
+          "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
+          "pension_update_hour": "Pension 720+ result check hour (0~23)",
+          "use_proxy": "Use proxy (IP block bypass)"
+        },
+        "data_description": {
+          "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
+          "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
+          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked."
         }
       }
     }

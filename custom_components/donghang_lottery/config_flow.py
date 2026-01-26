@@ -35,6 +35,15 @@ class DonghangLotteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
                 vol.Optional(CONF_LOCATION_ENTITY, default=""): str,
+                vol.Optional(
+                    CONF_LOTTO_UPDATE_HOUR, default=DEFAULT_LOTTO_UPDATE_HOUR
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+                vol.Optional(
+                    CONF_PENSION_UPDATE_HOUR, default=DEFAULT_PENSION_UPDATE_HOUR
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
+                vol.Optional(
+                    CONF_USE_PROXY, default=DEFAULT_USE_PROXY
+                ): bool,
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema)
