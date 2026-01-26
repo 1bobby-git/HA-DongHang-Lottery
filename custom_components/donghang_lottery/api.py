@@ -1,5 +1,5 @@
 # custom_components/donghang_lottery/api.py
-"""동행복권 API 클라이언트 - v0.6.0 강력한 우회 정책."""
+"""동행복권 API 클라이언트 - v0.7.0 워밍업 서킷 브레이커 분리."""
 
 from __future__ import annotations
 
@@ -189,7 +189,7 @@ class WinningRecord:
 class DonghangLotteryClient:
     """동행복권 API 클라이언트.
 
-    v0.6.0 - 강력한 우회 정책 (HA setup timeout 완전 대응):
+    v0.7.0 - 워밍업 서킷 브레이커 분리 + 당첨발표 스케줄 업데이트:
     - CancelledError 즉시 전파 (HA 60초 setup timeout 보호)
     - 워밍업 빠른 실패 (10초 타임아웃, 재시도 없음)
     - 타임아웃/재시도 횟수 요청별 오버라이드
@@ -273,7 +273,7 @@ class DonghangLotteryClient:
         self._proxy_initialized = True  # 스킵
 
         _LOGGER.info(
-            "[DHLottery] 클라이언트 초기화 (v0.6.0 강력한 우회 정책) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
+            "[DHLottery] 클라이언트 초기화 (v0.7.0) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
             self._min_request_interval,
             self._max_request_interval,
             self._max_retries,
@@ -967,8 +967,9 @@ class DonghangLotteryClient:
                 "https://www.dhlottery.co.kr/",
                 headers=headers,
                 skip_throttle=True,
-                timeout=10,       # 10초 타임아웃 (빠른 실패)
-                max_retries=0,    # 재시도 없음
+                timeout=10,
+                max_retries=0,
+                skip_circuit_breaker=True,  # 워밍업은 서킷 브레이커에 영향 없음
             )
         except asyncio.CancelledError:
             _LOGGER.warning("[DHLottery] 워밍업 취소됨 (CancelledError) - 스킵")
@@ -998,6 +999,7 @@ class DonghangLotteryClient:
                 skip_throttle=True,
                 timeout=10,
                 max_retries=0,
+                skip_circuit_breaker=True,  # 워밍업은 서킷 브레이커에 영향 없음
             )
         except asyncio.CancelledError:
             _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 취소됨 - 스킵")
@@ -1314,6 +1316,7 @@ class DonghangLotteryClient:
         skip_throttle: bool = False,
         timeout: int | None = None,
         max_retries: int | None = None,
+        skip_circuit_breaker: bool = False,
     ) -> ClientResponse:
         """HTTP 요청 (v0.6.0 강력한 우회 정책).
 
@@ -1328,8 +1331,8 @@ class DonghangLotteryClient:
 
         # 세마포어로 동시 요청 제한
         async with self._request_semaphore:
-            # 서킷 브레이커 확인
-            if not await self._check_circuit_breaker():
+            # 서킷 브레이커 확인 (워밍업 요청은 스킵)
+            if not skip_circuit_breaker and not await self._check_circuit_breaker():
                 raise DonghangLotteryError(
                     f"서킷 브레이커 OPEN - 서버 차단 감지, {self._circuit_cooldown:.0f}초 후 재시도"
                 )
@@ -1474,7 +1477,8 @@ class DonghangLotteryClient:
                         continue
 
             # 모든 재시도 실패
-            self._record_failure()
+            if not skip_circuit_breaker:
+                self._record_failure()
             raise DonghangLotteryError(
                 f"요청 실패 ({effective_retries + 1}회 시도 후): {url_short}"
             ) from last_error
