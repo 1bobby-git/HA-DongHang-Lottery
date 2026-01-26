@@ -110,9 +110,9 @@ export default {
         // Rewrite Set-Cookie domain
         if (lowerKey === 'set-cookie') {
           const rewritten = value
-            .replace(/domain=[^;]*/gi, '')
-            .replace(/secure;?/gi, '')
-            .replace(/samesite=[^;]*/gi, 'SameSite=None');
+            .replace(/;?\s*domain=[^;]*/gi, '')
+            .replace(/;?\s*secure(?=\s*;|\s*$)/gi, '')
+            .replace(/;?\s*samesite=[^;]*/gi, '; SameSite=None');
           responseHeaders.append(key, rewritten);
         }
         // Rewrite Location header for redirects

@@ -500,9 +500,13 @@ class DonghangLotteryClient:
                     allow_redirects=True,
                 )
                 if resp.status == 200:
+                    content_length = resp.headers.get("Content-Length", "unknown")
                     self._update_session_ids()
                     self._cookies_initialized = True
-                    _LOGGER.info("[DHLottery] ✓ 서버 연결 확인 (%s, HTTP 200)", url)
+                    _LOGGER.info(
+                        "[DHLottery] ✓ 서버 연결 확인 (%s, HTTP 200, 크기: %s)",
+                        url, content_length,
+                    )
                     return True
                 _LOGGER.warning("[DHLottery] ✗ 서버 응답 비정상: %s → HTTP %s", url, resp.status)
                 last_err = f"HTTP {resp.status}"
@@ -546,7 +550,7 @@ class DonghangLotteryClient:
                 **BASE_HEADERS,
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Origin": "https://www.dhlottery.co.kr",
-                "Referer": "https://www.dhlottery.co.kr/user.do?method=login",
+                "Referer": "https://www.dhlottery.co.kr/common.do?method=login",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             }
 
@@ -1012,7 +1016,7 @@ class DonghangLotteryClient:
         headers.update({
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://www.dhlottery.co.kr/user.do?method=login",
+            "Referer": "https://www.dhlottery.co.kr/common.do?method=login",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
@@ -1104,7 +1108,7 @@ class DonghangLotteryClient:
         try:
             await self._request(
                 "GET",
-                "https://www.dhlottery.co.kr/user.do?method=login",
+                "https://www.dhlottery.co.kr/common.do?method=login",
                 headers=headers,
                 skip_throttle=True,
                 timeout=5,
@@ -1469,6 +1473,11 @@ class DonghangLotteryClient:
             last_error: Exception | None = None
             resolved_url = self._resolve_url(url)
             url_short = url.split("?")[0].split("/")[-1] or url
+            if self._relay_url and resolved_url != url:
+                _LOGGER.debug(
+                    "[DHLottery] 릴레이 URL 변환: %s → %s",
+                    url_short, resolved_url.split("?")[0],
+                )
 
             for attempt in range(effective_retries + 1):
                 try:

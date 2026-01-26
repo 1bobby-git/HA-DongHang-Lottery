@@ -120,36 +120,47 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_PENSION_UPDATE_HOUR, DEFAULT_PENSION_UPDATE_HOUR),
     )
 
-    # 커스텀 aiohttp 세션 (TLS 핑거프린트 차별화, 연결 제어)
-    ssl_context = ssl.create_default_context()
-
-    # Chrome과 유사한 TLS 설정 (JA3 핑거프린트 차별화)
-    try:
-        ssl_context.set_ciphers(
-            "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20"
-            ":ECDHE+AES256:ECDHE+AES128:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK"
+    # 커스텀 aiohttp 세션
+    if relay_url:
+        # 릴레이 모드: workers.dev(Cloudflare)에 연결 → 기본 SSL 설정 사용
+        # Chrome 유사 TLS/ALPN/IPv4 강제는 불필요 (오히려 방해 가능)
+        connector = aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=3,
+            ttl_dns_cache=300,
+            force_close=False,
+            enable_cleanup_closed=True,
         )
-    except ssl.SSLError:
-        pass  # 시스템이 지원하지 않는 cipher는 기본값 유지
+        LOGGER.info("[DHLottery] 릴레이 모드: 기본 SSL 설정 사용 (%s)", relay_url)
+    else:
+        # 직접 연결: Chrome 유사 TLS 핑거프린트 + IPv4 강제
+        ssl_context = ssl.create_default_context()
+        try:
+            ssl_context.set_ciphers(
+                "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20"
+                ":ECDHE+AES256:ECDHE+AES128:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK"
+            )
+        except ssl.SSLError:
+            pass
+        ssl_context.set_alpn_protocols(["http/1.1"])
+        ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
 
-    ssl_context.set_alpn_protocols(["http/1.1"])
-    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        connector = aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=3,
+            ttl_dns_cache=300,
+            force_close=False,
+            enable_cleanup_closed=True,
+            ssl=ssl_context,
+            family=socket.AF_INET,
+        )
 
-    connector = aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=3,
-        ttl_dns_cache=300,
-        force_close=False,
-        enable_cleanup_closed=True,
-        ssl=ssl_context,
-        family=socket.AF_INET,  # IPv4 강제 (IPv6 타임아웃 방지)
-    )
     session = aiohttp.ClientSession(
         connector=connector,
         timeout=aiohttp.ClientTimeout(
             total=60,
-            connect=20,       # TCP 연결 20초 (15→20)
-            sock_connect=20,  # 소켓 연결 20초 (15→20)
+            connect=20,
+            sock_connect=20,
             sock_read=30,
         ),
         cookie_jar=aiohttp.CookieJar(unsafe=bool(relay_url)),
