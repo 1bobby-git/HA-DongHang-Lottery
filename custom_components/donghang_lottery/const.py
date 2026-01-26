@@ -22,6 +22,12 @@ DEFAULT_MIN_REQUEST_INTERVAL: Final = 4.0  # 증가: 1.0 → 4.0
 DEFAULT_MAX_REQUEST_INTERVAL: Final = 10.0  # 증가: 3.0 → 10.0
 DEFAULT_USE_PROXY: Final = True  # 프록시 기본 활성화 (IP 차단 우회)
 
+# 당첨발표 업데이트 스케줄 설정
+CONF_LOTTO_UPDATE_HOUR: Final = "lotto_update_hour"
+CONF_PENSION_UPDATE_HOUR: Final = "pension_update_hour"
+DEFAULT_LOTTO_UPDATE_HOUR: Final = 0   # 자정 (토요일)
+DEFAULT_PENSION_UPDATE_HOUR: Final = 0  # 자정 (목요일)
+
 ATTR_ENTRY_ID = "entry_id"
 ATTR_DRAW_NO = "draw_no"
 ATTR_COUNT = "count"

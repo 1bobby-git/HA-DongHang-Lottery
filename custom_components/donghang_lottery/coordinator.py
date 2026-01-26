@@ -15,59 +15,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from .api import AccountSummary, DonghangLotteryClient, DonghangLotteryError
-from .const import DOMAIN
+from .const import (
+    DEFAULT_LOTTO_UPDATE_HOUR,
+    DEFAULT_PENSION_UPDATE_HOUR,
+    DOMAIN,
+)
 
 # 최초 데이터 로드 타임아웃 (초) - HA setup timeout(60초)보다 짧아야 함
 FIRST_REFRESH_TIMEOUT = 30
 
 
 LOGGER = logging.getLogger(__name__)
-
-# 추첨 시간 (KST)
-LOTTO645_DRAW_WEEKDAY = 5  # 토요일 (0=월, 5=토)
-LOTTO645_DRAW_HOUR = 20
-LOTTO645_DRAW_MINUTE = 45
-
-PENSION720_DRAW_WEEKDAY = 3  # 목요일
-PENSION720_DRAW_HOUR = 19
-PENSION720_DRAW_MINUTE = 5
-
-# 추첨 후 결과 반영 대기 시간 (분)
-DRAW_RESULT_DELAY = 30
-
-
-def _get_next_draw_time() -> datetime:
-    """다음 추첨 시간 계산 (로또 또는 연금복권 중 빠른 것)."""
-    now = dt_util.now()
-
-    # 로또 6/45: 토요일 20:45
-    days_until_lotto = (LOTTO645_DRAW_WEEKDAY - now.weekday()) % 7
-    next_lotto = now.replace(
-        hour=LOTTO645_DRAW_HOUR,
-        minute=LOTTO645_DRAW_MINUTE,
-        second=0,
-        microsecond=0,
-    ) + timedelta(days=days_until_lotto)
-
-    # 이미 지났으면 다음 주
-    if next_lotto <= now:
-        next_lotto += timedelta(weeks=1)
-
-    # 연금복권 720+: 목요일 19:05
-    days_until_pension = (PENSION720_DRAW_WEEKDAY - now.weekday()) % 7
-    next_pension = now.replace(
-        hour=PENSION720_DRAW_HOUR,
-        minute=PENSION720_DRAW_MINUTE,
-        second=0,
-        microsecond=0,
-    ) + timedelta(days=days_until_pension)
-
-    if next_pension <= now:
-        next_pension += timedelta(weeks=1)
-
-    # 더 빠른 추첨 시간 + 결과 반영 대기 시간
-    next_draw = min(next_lotto, next_pension)
-    return next_draw + timedelta(minutes=DRAW_RESULT_DELAY)
 
 
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
@@ -83,6 +41,8 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self,
         hass: HomeAssistant,
         client: DonghangLotteryClient,
+        lotto_update_hour: int = DEFAULT_LOTTO_UPDATE_HOUR,
+        pension_update_hour: int = DEFAULT_PENSION_UPDATE_HOUR,
     ) -> None:
         super().__init__(
             hass,
@@ -91,6 +51,8 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             update_interval=None,  # 수동/스케줄 업데이트
         )
         self.client = client
+        self._lotto_update_hour = lotto_update_hour
+        self._pension_update_hour = pension_update_hour
         self._scheduled_update_unsub = None
         self._next_update_time: datetime | None = None
 
@@ -158,6 +120,36 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
 
         async_track_point_in_time(self.hass, _retry_refresh, retry_time)
 
+    def _get_next_draw_time(self) -> datetime:
+        """다음 당첨발표 확인 시간 계산 (목요일 또는 토요일 중 빠른 것)."""
+        now = dt_util.now()
+
+        # 로또 6/45: 토요일 (weekday=5) 설정된 시간
+        days_until_lotto = (5 - now.weekday()) % 7
+        next_lotto = now.replace(
+            hour=self._lotto_update_hour,
+            minute=0,
+            second=0,
+            microsecond=0,
+        ) + timedelta(days=days_until_lotto)
+
+        if next_lotto <= now:
+            next_lotto += timedelta(weeks=1)
+
+        # 연금복권 720+: 목요일 (weekday=3) 설정된 시간
+        days_until_pension = (3 - now.weekday()) % 7
+        next_pension = now.replace(
+            hour=self._pension_update_hour,
+            minute=0,
+            second=0,
+            microsecond=0,
+        ) + timedelta(days=days_until_pension)
+
+        if next_pension <= now:
+            next_pension += timedelta(weeks=1)
+
+        return min(next_lotto, next_pension)
+
     def _schedule_next_update(self) -> None:
         """다음 추첨 후 업데이트 스케줄."""
         # 기존 스케줄 취소
@@ -165,7 +157,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             self._scheduled_update_unsub()
             self._scheduled_update_unsub = None
 
-        self._next_update_time = _get_next_draw_time()
+        self._next_update_time = self._get_next_draw_time()
         LOGGER.info(
             "다음 업데이트 예정: %s",
             self._next_update_time.strftime("%Y-%m-%d %H:%M:%S"),

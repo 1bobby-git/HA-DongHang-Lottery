@@ -1,12 +1,11 @@
 # custom_components/donghang_lottery/__init__.py
-"""동행복권 Home Assistant 통합 - v0.6.0 강력한 우회 정책."""
+"""동행복권 Home Assistant 통합 - v0.7.0 당첨발표 스케줄 기반 업데이트."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import math
-import random
 from datetime import timedelta
 from typing import Any
 
@@ -47,11 +46,13 @@ from .const import (
     ATTR_USE_MY_NUMBERS,
     ATTR_WIN_RESULT,
     CONF_LOCATION_ENTITY,
-    CONF_MAX_REQUEST_INTERVAL,
-    CONF_MIN_REQUEST_INTERVAL,
+    CONF_LOTTO_UPDATE_HOUR,
+    CONF_PENSION_UPDATE_HOUR,
     CONF_USE_PROXY,
+    DEFAULT_LOTTO_UPDATE_HOUR,
     DEFAULT_MAX_REQUEST_INTERVAL,
     DEFAULT_MIN_REQUEST_INTERVAL,
+    DEFAULT_PENSION_UPDATE_HOUR,
     DEFAULT_USE_PROXY,
     DOMAIN,
     LOTTERY_LOTTO645,
@@ -80,14 +81,8 @@ LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[str] = ["sensor", "binary_sensor", "button"]
 
-# 세션 유지를 위한 keepalive (랜덤화: 25~40분 간격으로 예측 불가능하게)
-# 고정 간격은 봇으로 탐지될 수 있음
-def _get_random_keepalive_interval() -> timedelta:
-    """랜덤 keepalive 간격 생성 (25~40분)."""
-    minutes = random.randint(25, 40)
-    return timedelta(minutes=minutes)
-
-KEEPALIVE_INTERVAL = _get_random_keepalive_interval()
+# 세션 유지를 위한 keepalive (사이트 세션 유효 시간: 30분)
+KEEPALIVE_INTERVAL = timedelta(minutes=30)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -96,19 +91,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = entry.options.get(CONF_USERNAME, entry.data.get(CONF_USERNAME))
     password = entry.options.get(CONF_PASSWORD, entry.data.get(CONF_PASSWORD))
 
-    # 차단 방지 설정
-    min_interval = entry.options.get(
-        CONF_MIN_REQUEST_INTERVAL,
-        entry.data.get(CONF_MIN_REQUEST_INTERVAL, DEFAULT_MIN_REQUEST_INTERVAL),
-    )
-    max_interval = entry.options.get(
-        CONF_MAX_REQUEST_INTERVAL,
-        entry.data.get(CONF_MAX_REQUEST_INTERVAL, DEFAULT_MAX_REQUEST_INTERVAL),
-    )
+    # 차단 방지 설정 (내부 기본값 사용)
+    min_interval = DEFAULT_MIN_REQUEST_INTERVAL
+    max_interval = DEFAULT_MAX_REQUEST_INTERVAL
     # 프록시 설정 (IP 차단 우회 - 기본값 True)
     use_proxy = entry.options.get(
         CONF_USE_PROXY,
         entry.data.get(CONF_USE_PROXY, DEFAULT_USE_PROXY),
+    )
+
+    # 당첨발표 업데이트 시간 설정
+    lotto_update_hour = entry.options.get(
+        CONF_LOTTO_UPDATE_HOUR,
+        entry.data.get(CONF_LOTTO_UPDATE_HOUR, DEFAULT_LOTTO_UPDATE_HOUR),
+    )
+    pension_update_hour = entry.options.get(
+        CONF_PENSION_UPDATE_HOUR,
+        entry.data.get(CONF_PENSION_UPDATE_HOUR, DEFAULT_PENSION_UPDATE_HOUR),
     )
 
     session = async_get_clientsession(hass)
@@ -120,7 +119,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         max_request_interval=max_interval,
         use_proxy=use_proxy,
     )
-    coordinator = DonghangLotteryCoordinator(hass, client)
+    coordinator = DonghangLotteryCoordinator(
+        hass, client,
+        lotto_update_hour=lotto_update_hour,
+        pension_update_hour=pension_update_hour,
+    )
 
     store = MyNumberStore(hass, entry.entry_id)
     await store.async_load()

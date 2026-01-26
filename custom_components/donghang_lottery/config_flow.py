@@ -10,11 +10,11 @@ from homeassistant.core import callback
 
 from .const import (
     CONF_LOCATION_ENTITY,
-    CONF_MAX_REQUEST_INTERVAL,
-    CONF_MIN_REQUEST_INTERVAL,
+    CONF_LOTTO_UPDATE_HOUR,
+    CONF_PENSION_UPDATE_HOUR,
     CONF_USE_PROXY,
-    DEFAULT_MAX_REQUEST_INTERVAL,
-    DEFAULT_MIN_REQUEST_INTERVAL,
+    DEFAULT_LOTTO_UPDATE_HOUR,
+    DEFAULT_PENSION_UPDATE_HOUR,
     DEFAULT_USE_PROXY,
     DOMAIN,
 )
@@ -71,19 +71,19 @@ class DonghangLotteryOptionsFlowHandler(config_entries.OptionsFlow):
                     default=self._entry.options.get(CONF_PASSWORD, self._entry.data.get(CONF_PASSWORD, "")),
                 ): str,
                 vol.Optional(
-                    CONF_MIN_REQUEST_INTERVAL,
+                    CONF_LOTTO_UPDATE_HOUR,
                     default=self._entry.options.get(
-                        CONF_MIN_REQUEST_INTERVAL,
-                        self._entry.data.get(CONF_MIN_REQUEST_INTERVAL, DEFAULT_MIN_REQUEST_INTERVAL),
+                        CONF_LOTTO_UPDATE_HOUR,
+                        self._entry.data.get(CONF_LOTTO_UPDATE_HOUR, DEFAULT_LOTTO_UPDATE_HOUR),
                     ),
-                ): vol.Coerce(float),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
                 vol.Optional(
-                    CONF_MAX_REQUEST_INTERVAL,
+                    CONF_PENSION_UPDATE_HOUR,
                     default=self._entry.options.get(
-                        CONF_MAX_REQUEST_INTERVAL,
-                        self._entry.data.get(CONF_MAX_REQUEST_INTERVAL, DEFAULT_MAX_REQUEST_INTERVAL),
+                        CONF_PENSION_UPDATE_HOUR,
+                        self._entry.data.get(CONF_PENSION_UPDATE_HOUR, DEFAULT_PENSION_UPDATE_HOUR),
                     ),
-                ): vol.Coerce(float),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
                 vol.Optional(
                     CONF_USE_PROXY,
                     default=self._entry.options.get(
