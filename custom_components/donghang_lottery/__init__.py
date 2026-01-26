@@ -7,6 +7,7 @@ import aiohttp
 import asyncio
 import logging
 import math
+import socket
 import ssl
 from datetime import timedelta
 from typing import Any
@@ -113,6 +114,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # 커스텀 aiohttp 세션 (TLS 핑거프린트 차별화, 연결 제어)
     ssl_context = ssl.create_default_context()
+
+    # Chrome과 유사한 TLS 설정 (JA3 핑거프린트 차별화)
+    try:
+        ssl_context.set_ciphers(
+            "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20"
+            ":ECDHE+AES256:ECDHE+AES128:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK"
+        )
+    except ssl.SSLError:
+        pass  # 시스템이 지원하지 않는 cipher는 기본값 유지
+
+    ssl_context.set_alpn_protocols(["http/1.1"])
+    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+
     connector = aiohttp.TCPConnector(
         limit=10,
         limit_per_host=3,
@@ -120,13 +134,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         force_close=False,
         enable_cleanup_closed=True,
         ssl=ssl_context,
+        family=socket.AF_INET,  # IPv4 강제 (IPv6 타임아웃 방지)
     )
     session = aiohttp.ClientSession(
         connector=connector,
         timeout=aiohttp.ClientTimeout(
             total=60,
-            connect=15,
-            sock_connect=15,
+            connect=20,       # TCP 연결 20초 (15→20)
+            sock_connect=20,  # 소켓 연결 20초 (15→20)
             sock_read=30,
         ),
         cookie_jar=aiohttp.CookieJar(),

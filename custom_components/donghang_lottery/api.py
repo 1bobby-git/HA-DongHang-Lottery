@@ -445,26 +445,47 @@ class DonghangLotteryClient:
         _LOGGER.info("[DHLottery] ✓ 세션 완전 재초기화 완료")
 
     async def _quick_connectivity_check(self) -> bool:
-        """서버 연결 가능 여부 빠른 확인 (10초 타임아웃)."""
-        try:
-            resp = await self._session.request(
-                "GET",
-                "https://www.dhlottery.co.kr/",
-                headers=self._get_headers(),
-                timeout=ClientTimeout(total=10),
-            )
-            if resp.status == 200:
-                self._update_session_ids()
-                self._cookies_initialized = True
-                _LOGGER.info("[DHLottery] ✓ 서버 연결 확인 (사전 테스트 통과)")
-                return True
-            _LOGGER.warning("[DHLottery] ✗ 서버 응답 비정상: HTTP %s", resp.status)
-            return False
-        except asyncio.CancelledError:
-            raise
-        except Exception as err:
-            _LOGGER.warning("[DHLottery] ✗ 서버 연결 불가: %s", err)
-            return False
+        """서버 연결 가능 여부 빠른 확인 (20초 타임아웃, 진단 로그).
+
+        v0.8.0: 타임아웃 10→20초, 상세 에러 분류, 대체 URL 시도.
+        """
+        urls = [
+            "https://www.dhlottery.co.kr/",
+            "https://dhlottery.co.kr/",
+        ]
+        last_err = None
+        for url in urls:
+            try:
+                _LOGGER.info("[DHLottery] 연결 테스트: %s", url)
+                resp = await self._session.request(
+                    "GET",
+                    url,
+                    headers=self._get_headers(),
+                    timeout=ClientTimeout(total=20),
+                    allow_redirects=True,
+                )
+                if resp.status == 200:
+                    self._update_session_ids()
+                    self._cookies_initialized = True
+                    _LOGGER.info("[DHLottery] ✓ 서버 연결 확인 (%s, HTTP 200)", url)
+                    return True
+                _LOGGER.warning("[DHLottery] ✗ 서버 응답 비정상: %s → HTTP %s", url, resp.status)
+                last_err = f"HTTP {resp.status}"
+            except asyncio.CancelledError:
+                raise
+            except asyncio.TimeoutError:
+                _LOGGER.warning("[DHLottery] ✗ 연결 타임아웃 (20초): %s", url)
+                last_err = "타임아웃 (20초)"
+            except OSError as err:
+                # DNS 실패, 네트워크 미연결, 연결 거부 등
+                _LOGGER.warning("[DHLottery] ✗ 네트워크 에러: %s → %s", url, err)
+                last_err = f"네트워크: {err}"
+            except Exception as err:
+                _LOGGER.warning("[DHLottery] ✗ 연결 실패: %s → %s (%s)", url, type(err).__name__, err)
+                last_err = f"{type(err).__name__}: {err}"
+
+        _LOGGER.error("[DHLottery] 모든 연결 시도 실패 (마지막: %s)", last_err)
+        return False
 
     async def async_login(self, force: bool = False) -> None:
         if self._logged_in and not force:
@@ -476,7 +497,9 @@ class DonghangLotteryClient:
 
             # 서버 연결 사전 테스트 (빠른 실패)
             if not await self._quick_connectivity_check():
-                raise DonghangLotteryError("서버 연결 불가 - 사이트 접속 타임아웃")
+                raise DonghangLotteryError(
+                    "서버 연결 불가 - 모든 URL 접속 실패 (네트워크 또는 IP 차단 가능성)"
+                )
 
             await self._warmup_login_pages()
             modulus, exponent = await self._get_rsa_key()
@@ -993,6 +1016,11 @@ class DonghangLotteryClient:
             )
             self._cookies_initialized = True
             self._session_warmed_up = True
+            return
+
+        # 사전 테스트에서 쿠키+세션 이미 획득 → 워밍업 전체 건너뛰기
+        if self._cookies_initialized and self._session_warmed_up:
+            _LOGGER.info("[DHLottery] 워밍업 건너뛰기 (사전 테스트에서 이미 완료)")
             return
 
         # 사전 테스트에서 이미 쿠키 획득했으면 메인 페이지 건너뛰기
