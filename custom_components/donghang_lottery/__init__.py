@@ -1,5 +1,5 @@
 # custom_components/donghang_lottery/__init__.py
-"""동행복권 Home Assistant 통합 - v0.7.0 당첨발표 스케줄 기반 업데이트."""
+"""동행복권 Home Assistant 통합 - v1.0."""
 
 from __future__ import annotations
 
@@ -51,13 +51,9 @@ from .const import (
     CONF_LOTTO_UPDATE_HOUR,
     CONF_PENSION_UPDATE_HOUR,
     CONF_RELAY_URL,
-    CONF_USE_PROXY,
     DEFAULT_LOTTO_UPDATE_HOUR,
-    DEFAULT_MAX_REQUEST_INTERVAL,
-    DEFAULT_MIN_REQUEST_INTERVAL,
     DEFAULT_PENSION_UPDATE_HOUR,
     DEFAULT_RELAY_URL,
-    DEFAULT_USE_PROXY,
     DOMAIN,
     LOTTERY_LOTTO645,
     LOTTERY_PENSION720,
@@ -94,15 +90,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     username = entry.options.get(CONF_USERNAME, entry.data.get(CONF_USERNAME))
     password = entry.options.get(CONF_PASSWORD, entry.data.get(CONF_PASSWORD))
-
-    # 차단 방지 설정 (내부 기본값 사용)
-    min_interval = DEFAULT_MIN_REQUEST_INTERVAL
-    max_interval = DEFAULT_MAX_REQUEST_INTERVAL
-    # 프록시 설정 (IP 차단 우회 - 기본값 True)
-    use_proxy = entry.options.get(
-        CONF_USE_PROXY,
-        entry.data.get(CONF_USE_PROXY, DEFAULT_USE_PROXY),
-    )
 
     # 릴레이 URL 설정 (Cloudflare Worker 경유)
     relay_url = entry.options.get(
@@ -169,9 +156,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         session,
         username,
         password,
-        min_request_interval=min_interval,
-        max_request_interval=max_interval,
-        use_proxy=use_proxy,
         relay_url=relay_url,
     )
     coordinator = DonghangLotteryCoordinator(

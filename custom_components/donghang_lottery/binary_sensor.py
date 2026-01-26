@@ -107,6 +107,11 @@ class DonghangLotteryBinarySensor(
 
 def _get_lotto645_item(data: DonghangLotteryData) -> dict[str, Any]:
     result = data.lotto645_result or {}
+    # api.py returns {drwNo, ..., _raw: {ltEpsd, tm1WnNo, rnk1WnNope, ...}}
+    # 센서는 원본 API 키(rnk1WnNope 등)를 사용하므로 _raw 반환
+    if "_raw" in result:
+        return result["_raw"]
+    # 폴백: 중첩된 응답 구조 탐색
     payload = result.get("data", result)
     if isinstance(payload, dict):
         items = payload.get("list") or payload.get("result") or payload.get("data")

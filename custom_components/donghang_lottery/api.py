@@ -1,5 +1,5 @@
 # custom_components/donghang_lottery/api.py
-"""동행복권 API 클라이언트 - v0.7.0 워밍업 서킷 브레이커 분리."""
+"""동행복권 API 클라이언트 - v1.0."""
 
 from __future__ import annotations
 
@@ -187,16 +187,7 @@ class WinningRecord:
 
 
 class DonghangLotteryClient:
-    """동행복권 API 클라이언트.
-
-    v0.7.0 - 워밍업 서킷 브레이커 분리 + 당첨발표 스케줄 업데이트:
-    - CancelledError 즉시 전파 (HA 60초 setup timeout 보호)
-    - 워밍업 빠른 실패 (10초 타임아웃, 재시도 없음)
-    - 타임아웃/재시도 횟수 요청별 오버라이드
-    - 서킷 브레이커 + 긴 쿨다운 (IP 차단 시 자동 복구 대기)
-    - 요청 실패 시 세션 완전 재초기화
-    - 워밍업 실패해도 로그인 시도 계속 진행
-    """
+    """동행복권 API 클라이언트."""
 
     # 서킷 브레이커 상태
     CIRCUIT_CLOSED = "closed"  # 정상
@@ -208,12 +199,9 @@ class DonghangLotteryClient:
         session: ClientSession,
         username: str,
         password: str,
-        min_request_interval: float = 8.0,   # 더 긴 간격: 8초
-        max_request_interval: float = 20.0,  # 더 긴 간격: 20초
-        max_retries: int = 3,                # 재시도 줄임: 3회
-        retry_delay: float = 30.0,           # 더 긴 대기: 30초
-        use_proxy: bool = False,             # 프록시 비활성화 (효과 없음)
-        relay_url: str = "",                 # Cloudflare Worker 릴레이 URL
+        max_retries: int = 3,
+        retry_delay: float = 30.0,
+        relay_url: str = "",
     ) -> None:
         self._session = session
         self._relay_url = relay_url.rstrip("/") if relay_url else ""
@@ -237,8 +225,8 @@ class DonghangLotteryClient:
             self._max_request_interval = 1.0
         else:
             # 직접 연결: IP 차단 방지를 위해 긴 간격 유지
-            self._min_request_interval = max(min_request_interval, 8.0)
-            self._max_request_interval = max(max_request_interval, 20.0)
+            self._min_request_interval = 8.0
+            self._max_request_interval = 20.0
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._max_backoff_delay = 300.0  # 최대 백오프 5분
@@ -279,13 +267,8 @@ class DonghangLotteryClient:
         self._warmup_failures = 0
         self._warmup_skip_threshold = 2  # 2회 연속 실패 시 건너뛰기
 
-        # 프록시 비활성화 (무료 프록시는 효과 없음)
-        self._use_proxy = False
-        self._proxy_manager = None
-        self._proxy_initialized = True  # 스킵
-
         _LOGGER.info(
-            "[DHLottery] 클라이언트 초기화 (v0.8.1) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개, 릴레이: %s",
+            "[DHLottery] 클라이언트 초기화 (v1.0) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개, 릴레이: %s",
             self._min_request_interval,
             self._max_request_interval,
             self._max_retries,

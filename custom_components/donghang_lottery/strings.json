@@ -3,21 +3,29 @@
     "step": {
       "user": {
         "title": "동행복권",
-        "description": "동행복권 계정 정보와 업데이트 설정을 입력하세요. [동행복권](https://www.dhlottery.co.kr/)",
+        "description": "동행복권 계정 정보를 입력하세요. [동행복권](https://www.dhlottery.co.kr/)",
         "data": {
           "username": "아이디",
           "password": "비밀번호",
           "location_entity": "위치 엔티티",
           "lotto_update_hour": "로또 6/45 발표 확인 시간 (시, 0~23)",
           "pension_update_hour": "연금복권 720+ 발표 확인 시간 (시, 0~23)",
-          "use_proxy": "프록시 사용 (IP 차단 우회)",
-          "relay_url": "릴레이 서버 URL"
+          "use_relay": "IP 차단 우회 (릴레이 서버 사용)"
         },
         "data_description": {
           "lotto_update_hour": "토요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
           "pension_update_hour": "목요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
-          "use_proxy": "활성화 시 무료 프록시를 자동 수집하여 IP 차단을 우회합니다. 이미 차단된 IP라면 이 옵션을 켜세요.",
-          "relay_url": "Cloudflare Worker 릴레이 URL을 입력하세요. HA 서버에서 동행복권 사이트에 직접 접속이 안 되는 경우 릴레이를 경유합니다. 비워두면 직접 연결합니다."
+          "use_relay": "동행복권 서버로부터 IP가 차단된 경우, Cloudflare Worker 릴레이를 통해 우회합니다."
+        }
+      },
+      "relay": {
+        "title": "릴레이 서버 설정",
+        "description": "Cloudflare Worker 릴레이 서버 URL을 입력하세요. 릴레이 배포 방법은 GitHub 저장소의 worker 폴더를 참조하세요.",
+        "data": {
+          "relay_url": "릴레이 서버 URL"
+        },
+        "data_description": {
+          "relay_url": "예: https://dh-relay.your-id.workers.dev"
         }
       }
     }
@@ -28,19 +36,27 @@
         "title": "동행복권 옵션",
         "description": "당첨발표 확인 시간과 연결 설정을 조정할 수 있습니다.",
         "data": {
-          "location_entity": "위치 엔티티",
           "username": "아이디",
           "password": "비밀번호",
+          "location_entity": "위치 엔티티",
           "lotto_update_hour": "로또 6/45 발표 확인 시간 (시, 0~23)",
           "pension_update_hour": "연금복권 720+ 발표 확인 시간 (시, 0~23)",
-          "use_proxy": "프록시 사용 (IP 차단 우회)",
-          "relay_url": "릴레이 서버 URL"
+          "use_relay": "IP 차단 우회 (릴레이 서버 사용)"
         },
         "data_description": {
           "lotto_update_hour": "토요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
           "pension_update_hour": "목요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
-          "use_proxy": "활성화 시 무료 프록시를 자동 수집하여 IP 차단을 우회합니다. 이미 차단된 IP라면 이 옵션을 켜세요.",
-          "relay_url": "Cloudflare Worker 릴레이 URL을 입력하세요. HA 서버에서 동행복권 사이트에 직접 접속이 안 되는 경우 릴레이를 경유합니다. 비워두면 직접 연결합니다."
+          "use_relay": "동행복권 서버로부터 IP가 차단된 경우, Cloudflare Worker 릴레이를 통해 우회합니다."
+        }
+      },
+      "relay": {
+        "title": "릴레이 서버 설정",
+        "description": "Cloudflare Worker 릴레이 서버 URL을 입력하세요.",
+        "data": {
+          "relay_url": "릴레이 서버 URL"
+        },
+        "data_description": {
+          "relay_url": "예: https://dh-relay.your-id.workers.dev"
         }
       }
     }
@@ -115,6 +131,58 @@
       "update": {
         "name": "동행복권 업데이트"
       }
+    },
+    "binary_sensor": {
+      "has_unclaimed_prizes": {
+        "name": "미수령 당첨금 있음"
+      },
+      "has_unconfirmed_games": {
+        "name": "미확인 게임 있음"
+      },
+      "has_balance": {
+        "name": "예치금 있음"
+      },
+      "lotto645_has_first_winner": {
+        "name": "로또6/45 1등 당첨자 있음"
+      }
+    }
+  },
+  "services": {
+    "refresh_account": {
+      "name": "계정 새로고침",
+      "description": "계정 정보를 새로고침합니다"
+    },
+    "buy_lotto645": {
+      "name": "로또6/45 구매",
+      "description": "로또6/45를 구매합니다"
+    },
+    "buy_pension720": {
+      "name": "연금복권720+ 구매",
+      "description": "연금복권720+를 구매합니다"
+    },
+    "fetch_lotto645_result": {
+      "name": "로또6/45 결과 조회",
+      "description": "로또6/45 추첨 결과를 조회합니다"
+    },
+    "fetch_pension720_result": {
+      "name": "연금복권720+ 결과 조회",
+      "description": "연금복권720+ 추첨 결과를 조회합니다"
+    },
+    "fetch_winning_shops": {
+      "name": "당첨 판매점 조회",
+      "description": "당첨 복권 판매점을 조회합니다"
+    },
+    "fetch_next_draw_info": {
+      "name": "다음 회차 정보 조회",
+      "description": "다음 복권 추첨 정보를 조회합니다"
+    },
+    "fetch_purchase_ledger": {
+      "name": "구매 내역 조회",
+      "description": "복권 구매 내역을 조회합니다"
+    },
+    "search_lottery_shops": {
+      "name": "복권 판매점 검색",
+      "description": "시/도 및 구/군으로 복권 판매점을 검색합니다"
     }
   }
 }

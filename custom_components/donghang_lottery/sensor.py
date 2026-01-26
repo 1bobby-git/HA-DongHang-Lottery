@@ -40,20 +40,21 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="unconfirmed_count",
         translation_key="unconfirmed_games",
-        icon="mdi:help-circle",
+        icon="mdi:help-circle-outline",
         value_fn=lambda data: data.account.unconfirmed_count,
         device_group="account",
     ),
     DonghangLotterySensorDescription(
         key="unclaimed_high_value_count",
         translation_key="unclaimed_high_value",
-        icon="mdi:alert-circle",
+        icon="mdi:cash-clock",
         value_fn=lambda data: data.account.unclaimed_high_value_count,
         device_group="account",
     ),
     DonghangLotterySensorDescription(
         key="last_update",
         translation_key="last_update",
+        icon="mdi:clock-check-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_group="account",
@@ -61,6 +62,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="next_update",
         translation_key="next_update",
+        icon="mdi:clock-outline",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
         device_group="account",
@@ -68,24 +70,28 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="lotto645_round",
         translation_key="lotto645_round",
+        icon="mdi:counter",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("ltEpsd")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_numbers",
         translation_key="lotto645_numbers",
+        icon="mdi:numeric",
         value_fn=lambda data: _format_numbers(_get_lotto645_numbers(_get_lotto645_item(data))),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_bonus",
         translation_key="lotto645_bonus",
+        icon="mdi:star-circle",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("bnsWnNo")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_draw_date",
         translation_key="lotto645_draw_date",
+        icon="mdi:calendar",
         device_class=SensorDeviceClass.DATE,
         value_fn=lambda data: _parse_yyyymmdd(_get_lotto645_item(data).get("ltRflYmd")),
         device_group="lotto",
@@ -101,30 +107,35 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="lotto645_first_winners",
         translation_key="lotto645_first_winners",
+        icon="mdi:account-star",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rnk1WnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_second_winners",
         translation_key="lotto645_second_winners",
+        icon="mdi:account-star-outline",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rnk2WnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_third_winners",
         translation_key="lotto645_third_winners",
+        icon="mdi:account-outline",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rnk3WnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_total_winners",
         translation_key="lotto645_total_winners",
+        icon="mdi:account-group",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("sumWnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_sales_amount",
         translation_key="lotto645_sales_amount",
+        icon="mdi:chart-line",
         native_unit_of_measurement="KRW",
         value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rlvtEpsdSumNtslAmt")),
         device_group="lotto",
@@ -132,6 +143,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="pension720_round",
         translation_key="pension720_round",
+        icon="mdi:counter",
         value_fn=lambda data: data.pension720_round
         or _safe_int(_get_pension720_item(data).get("psltEpsd")),
         device_group="pension",
@@ -139,6 +151,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="pension720_draw_date",
         translation_key="pension720_draw_date",
+        icon="mdi:calendar",
         device_class=SensorDeviceClass.DATE,
         value_fn=lambda data: _parse_yyyymmdd(
             _first_present(_get_pension720_item(data), ["drwDate", "drwYmd", "psltRflYmd"])
@@ -158,6 +171,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="pension720_first_winners",
         translation_key="pension720_first_winners",
+        icon="mdi:account-star",
         value_fn=lambda data: _safe_int(
             _first_present(_get_pension720_item(data), ["rnk1WnNope", "wnTotalCnt", "wnNope1", "winNope1", "wnCnt1"])
         ),
@@ -166,12 +180,14 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="pension720_group",
         translation_key="pension720_group",
+        icon="mdi:label",
         value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnBndNo", "wnRnk", "wnGroup"]),
         device_group="pension",
     ),
     DonghangLotterySensorDescription(
         key="pension720_number",
         translation_key="pension720_number",
+        icon="mdi:ticket-confirmation",
         value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnRnkVl", "wnNo", "wnNumber", "wnNum"]),
         device_group="pension",
     ),

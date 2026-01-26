@@ -3,21 +3,29 @@
     "step": {
       "user": {
         "title": "Donghang Lottery",
-        "description": "Enter your Donghang Lottery credentials and update settings. [Donghang Lottery](https://www.dhlottery.co.kr/)",
+        "description": "Enter your Donghang Lottery credentials. [Donghang Lottery](https://www.dhlottery.co.kr/)",
         "data": {
           "username": "Username",
           "password": "Password",
           "location_entity": "Location entity",
           "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
           "pension_update_hour": "Pension 720+ result check hour (0~23)",
-          "use_proxy": "Use proxy (IP block bypass)",
-          "relay_url": "Relay Server URL"
+          "use_relay": "IP Block Bypass (Relay Server)"
         },
         "data_description": {
           "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
           "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
-          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked.",
-          "relay_url": "Enter Cloudflare Worker relay URL. If your HA server cannot directly access dhlottery.co.kr, requests will be routed through the relay. Leave empty for direct connection."
+          "use_relay": "If your IP is blocked by dhlottery.co.kr, route requests through a Cloudflare Worker relay."
+        }
+      },
+      "relay": {
+        "title": "Relay Server Settings",
+        "description": "Enter your Cloudflare Worker relay server URL. See the worker folder in the GitHub repository for deployment instructions.",
+        "data": {
+          "relay_url": "Relay Server URL"
+        },
+        "data_description": {
+          "relay_url": "e.g., https://dh-relay.your-id.workers.dev"
         }
       }
     }
@@ -25,22 +33,30 @@
   "options": {
     "step": {
       "init": {
-        "title": "Donghang Lottery options",
+        "title": "Donghang Lottery Options",
         "description": "Configure draw result check times and connection settings.",
         "data": {
-          "location_entity": "Location entity",
           "username": "Username",
           "password": "Password",
+          "location_entity": "Location entity",
           "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
           "pension_update_hour": "Pension 720+ result check hour (0~23)",
-          "use_proxy": "Use proxy (IP block bypass)",
-          "relay_url": "Relay Server URL"
+          "use_relay": "IP Block Bypass (Relay Server)"
         },
         "data_description": {
           "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
           "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
-          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked.",
-          "relay_url": "Enter Cloudflare Worker relay URL. If your HA server cannot directly access dhlottery.co.kr, requests will be routed through the relay. Leave empty for direct connection."
+          "use_relay": "If your IP is blocked by dhlottery.co.kr, route requests through a Cloudflare Worker relay."
+        }
+      },
+      "relay": {
+        "title": "Relay Server Settings",
+        "description": "Enter your Cloudflare Worker relay server URL.",
+        "data": {
+          "relay_url": "Relay Server URL"
+        },
+        "data_description": {
+          "relay_url": "e.g., https://dh-relay.your-id.workers.dev"
         }
       }
     }
