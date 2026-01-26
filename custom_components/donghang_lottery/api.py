@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from aiohttp import ClientResponse, ClientSession
+from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES, PKCS1_v1_5
 from Crypto.Hash import SHA256
@@ -267,6 +267,10 @@ class DonghangLotteryClient:
         self._session_warmed_up = False
         self._cookies_initialized = False
 
+        # 적응형 워밍업 (연속 실패 시 건너뛰기)
+        self._warmup_failures = 0
+        self._warmup_skip_threshold = 2  # 2회 연속 실패 시 건너뛰기
+
         # 프록시 비활성화 (무료 프록시는 효과 없음)
         self._use_proxy = False
         self._proxy_manager = None
@@ -440,6 +444,28 @@ class DonghangLotteryClient:
 
         _LOGGER.info("[DHLottery] ✓ 세션 완전 재초기화 완료")
 
+    async def _quick_connectivity_check(self) -> bool:
+        """서버 연결 가능 여부 빠른 확인 (10초 타임아웃)."""
+        try:
+            resp = await self._session.request(
+                "GET",
+                "https://www.dhlottery.co.kr/",
+                headers=self._get_headers(),
+                timeout=ClientTimeout(total=10),
+            )
+            if resp.status == 200:
+                self._update_session_ids()
+                self._cookies_initialized = True
+                _LOGGER.info("[DHLottery] ✓ 서버 연결 확인 (사전 테스트 통과)")
+                return True
+            _LOGGER.warning("[DHLottery] ✗ 서버 응답 비정상: HTTP %s", resp.status)
+            return False
+        except asyncio.CancelledError:
+            raise
+        except Exception as err:
+            _LOGGER.warning("[DHLottery] ✗ 서버 연결 불가: %s", err)
+            return False
+
     async def async_login(self, force: bool = False) -> None:
         if self._logged_in and not force:
             return
@@ -447,6 +473,10 @@ class DonghangLotteryClient:
         async with self._login_lock:
             if self._logged_in and not force:
                 return
+
+            # 서버 연결 사전 테스트 (빠른 실패)
+            if not await self._quick_connectivity_check():
+                raise DonghangLotteryError("서버 연결 불가 - 사이트 접속 타임아웃")
 
             await self._warmup_login_pages()
             modulus, exponent = await self._get_rsa_key()
@@ -946,45 +976,62 @@ class DonghangLotteryClient:
         return key
 
     async def _warmup_login_pages(self) -> None:
-        """로그인 페이지 워밍업 (v0.7.6 타임아웃 예산 최적화).
+        """로그인 페이지 워밍업 (v0.7.8 적응형).
 
-        빠른 실패 전략:
+        적응형 전략:
+        - 연속 실패 시 워밍업 건너뛰기 (시간 절약)
         - 짧은 타임아웃 (5초) + 재시도 없음 (1회 시도)
         - CancelledError 시 즉시 반환 (HA setup timeout 보호)
-        - 워밍업 실패해도 로그인 시도 계속 진행
-        - 총 워밍업 예산: ~12초 (이전 ~24초에서 절반으로 축소)
+        - 연결 사전 테스트 통과 시 쿠키 이미 획득됨 → 워밍업 간소화
         """
-        _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작 (빠른 모드)...")
-
-        # 1단계: 메인 페이지 방문 (5초 타임아웃, 재시도 없음)
-        headers = self._get_headers()
-        headers["Sec-Fetch-Site"] = "none"
-        headers["Sec-Fetch-User"] = "?1"
-
-        try:
-            await self._request(
-                "GET",
-                "https://www.dhlottery.co.kr/",
-                headers=headers,
-                skip_throttle=True,
-                timeout=5,
-                max_retries=0,
-                skip_circuit_breaker=True,
+        # 적응형: 연속 실패 시 건너뛰기
+        if self._warmup_failures >= self._warmup_skip_threshold:
+            _LOGGER.info(
+                "[DHLottery] 워밍업 건너뛰기 (연속 %d회 실패, 임계값 %d)",
+                self._warmup_failures,
+                self._warmup_skip_threshold,
             )
-        except asyncio.CancelledError:
-            _LOGGER.warning("[DHLottery] 워밍업 취소됨 (CancelledError) - 스킵")
-            return
-        except Exception as err:
-            _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패 (스킵): %s", err)
-
-        # 짧은 대기 (0.5~1초)
-        try:
-            await asyncio.sleep(random.uniform(0.5, 1.0))
-        except asyncio.CancelledError:
-            _LOGGER.warning("[DHLottery] 워밍업 대기 중 취소됨 - 스킵")
             self._cookies_initialized = True
             self._session_warmed_up = True
             return
+
+        # 사전 테스트에서 이미 쿠키 획득했으면 메인 페이지 건너뛰기
+        if self._cookies_initialized:
+            _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작 (쿠키 이미 획득, 로그인 페이지만)...")
+        else:
+            _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작 (빠른 모드)...")
+
+        # 1단계: 메인 페이지 방문 (5초 타임아웃, 재시도 없음)
+        if not self._cookies_initialized:
+            headers = self._get_headers()
+            headers["Sec-Fetch-Site"] = "none"
+            headers["Sec-Fetch-User"] = "?1"
+
+            try:
+                await self._request(
+                    "GET",
+                    "https://www.dhlottery.co.kr/",
+                    headers=headers,
+                    skip_throttle=True,
+                    timeout=5,
+                    max_retries=0,
+                    skip_circuit_breaker=True,
+                )
+            except asyncio.CancelledError:
+                _LOGGER.warning("[DHLottery] 워밍업 취소됨 (CancelledError) - 스킵")
+                return
+            except Exception as err:
+                self._warmup_failures += 1
+                _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패 (스킵, 연속 %d회): %s", self._warmup_failures, err)
+
+            # 짧은 대기 (0.5~1초)
+            try:
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+            except asyncio.CancelledError:
+                _LOGGER.warning("[DHLottery] 워밍업 대기 중 취소됨 - 스킵")
+                self._cookies_initialized = True
+                self._session_warmed_up = True
+                return
 
         # 2단계: 로그인 페이지 방문 (5초 타임아웃, 재시도 없음)
         headers = self._get_headers()
@@ -1007,7 +1054,8 @@ class DonghangLotteryClient:
             self._session_warmed_up = True
             return
         except Exception as err:
-            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패 (스킵): %s", err)
+            self._warmup_failures += 1
+            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패 (스킵, 연속 %d회): %s", self._warmup_failures, err)
 
         # 짧은 대기 (0.5~1초)
         try:
@@ -1018,6 +1066,7 @@ class DonghangLotteryClient:
             self._session_warmed_up = True
             return
 
+        self._warmup_failures = 0  # 성공 시 실패 카운터 리셋
         self._cookies_initialized = True
         self._session_warmed_up = True
         _LOGGER.info("[DHLottery] ✓ 브라우저 세션 워밍업 완료")
@@ -1368,7 +1417,7 @@ class DonghangLotteryClient:
                         headers=request_headers,
                         data=data,
                         params=params,
-                        timeout=effective_timeout,
+                        timeout=ClientTimeout(total=effective_timeout),
                     )
 
                     # 성공적인 응답 (200 OK)

@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import aiohttp
 import asyncio
 import logging
 import math
+import ssl
 from datetime import timedelta
 from typing import Any
 
@@ -15,7 +17,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 
 from .api import DonghangLotteryClient, DonghangLotteryError
@@ -110,7 +111,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_PENSION_UPDATE_HOUR, DEFAULT_PENSION_UPDATE_HOUR),
     )
 
-    session = async_get_clientsession(hass)
+    # 커스텀 aiohttp 세션 (TLS 핑거프린트 차별화, 연결 제어)
+    ssl_context = ssl.create_default_context()
+    connector = aiohttp.TCPConnector(
+        limit=10,
+        limit_per_host=3,
+        ttl_dns_cache=300,
+        force_close=False,
+        enable_cleanup_closed=True,
+        ssl=ssl_context,
+    )
+    session = aiohttp.ClientSession(
+        connector=connector,
+        timeout=aiohttp.ClientTimeout(
+            total=60,
+            connect=15,
+            sock_connect=15,
+            sock_read=30,
+        ),
+        cookie_jar=aiohttp.CookieJar(),
+    )
     client = DonghangLotteryClient(
         session,
         username,
@@ -125,6 +145,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         pension_update_hour=pension_update_hour,
     )
 
+    # 최초 데이터 로드 - 실패 시 ConfigEntryNotReady 전파 (센서 미등록)
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        # 실패 시 커스텀 세션 정리
+        await session.close()
+        raise
+
+    # 데이터 로드 성공 → 센서 등록 진행
     store = MyNumberStore(hass, entry.entry_id)
     await store.async_load()
 
@@ -132,24 +161,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "client": client,
         "coordinator": coordinator,
         "store": store,
+        "session": session,
         "keepalive_unsub": None,
         "username": username,
         "location_entity": entry.options.get(
             CONF_LOCATION_ENTITY, entry.data.get(CONF_LOCATION_ENTITY, "")
         ),
     }
-
-    try:
-        await coordinator.async_config_entry_first_refresh()
-    except asyncio.CancelledError:
-        # HA setup timeout에 의한 취소 - 절대 전파하지 않음
-        LOGGER.warning(
-            "[DHLottery] Setup 중 CancelledError 발생 - 무시하고 setup 계속 진행"
-        )
-    except DonghangLotteryError as err:
-        LOGGER.debug("Initial refresh failed, continuing setup: %s", err)
-    except Exception as err:
-        LOGGER.debug("Initial refresh failed, continuing setup: %s", err)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -184,6 +202,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = data.get("coordinator")
         if coordinator:
             coordinator.async_cancel_scheduled_update()
+        # 커스텀 세션 정리
+        custom_session = data.get("session")
+        if custom_session:
+            await custom_session.close()
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unload_ok
 
@@ -658,12 +680,16 @@ def _normalize_lotto_numbers(raw_numbers: list[Any]) -> list[list[int]]:
 
 
 def _extract_lotto645_win_info(data: dict[str, Any]) -> dict[str, Any]:
-    payload = data.get("data", data)
-    items = payload.get("list") or payload.get("result") or payload.get("data") or []
-    if items:
-        item = items[0]
+    # api.py가 _raw에 원본 API 키를 보존하므로 우선 사용
+    if "_raw" in data:
+        item = data["_raw"]
     else:
-        item = payload if isinstance(payload, dict) else {}
+        payload = data.get("data", data)
+        items = payload.get("list") or payload.get("result") or payload.get("data") or []
+        if items:
+            item = items[0]
+        else:
+            item = payload if isinstance(payload, dict) else {}
 
     numbers = [
         int(item.get("tm1WnNo", 0)),
