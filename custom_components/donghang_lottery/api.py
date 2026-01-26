@@ -946,17 +946,17 @@ class DonghangLotteryClient:
         return key
 
     async def _warmup_login_pages(self) -> None:
-        """로그인 페이지 워밍업 (v0.6.0 강력한 우회 정책).
+        """로그인 페이지 워밍업 (v0.7.6 타임아웃 예산 최적화).
 
         빠른 실패 전략:
-        - 짧은 타임아웃 (10초) + 재시도 없음 (1회 시도)
+        - 짧은 타임아웃 (5초) + 재시도 없음 (1회 시도)
         - CancelledError 시 즉시 반환 (HA setup timeout 보호)
         - 워밍업 실패해도 로그인 시도 계속 진행
-        - 실패 시 백그라운드에서 나중에 다시 시도
+        - 총 워밍업 예산: ~12초 (이전 ~24초에서 절반으로 축소)
         """
         _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작 (빠른 모드)...")
 
-        # 1단계: 메인 페이지 방문 (짧은 타임아웃, 재시도 없음)
+        # 1단계: 메인 페이지 방문 (5초 타임아웃, 재시도 없음)
         headers = self._get_headers()
         headers["Sec-Fetch-Site"] = "none"
         headers["Sec-Fetch-User"] = "?1"
@@ -967,9 +967,9 @@ class DonghangLotteryClient:
                 "https://www.dhlottery.co.kr/",
                 headers=headers,
                 skip_throttle=True,
-                timeout=10,
+                timeout=5,
                 max_retries=0,
-                skip_circuit_breaker=True,  # 워밍업은 서킷 브레이커에 영향 없음
+                skip_circuit_breaker=True,
             )
         except asyncio.CancelledError:
             _LOGGER.warning("[DHLottery] 워밍업 취소됨 (CancelledError) - 스킵")
@@ -977,16 +977,16 @@ class DonghangLotteryClient:
         except Exception as err:
             _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패 (스킵): %s", err)
 
-        # 짧은 대기 (1~2초) - CancelledError 보호
+        # 짧은 대기 (0.5~1초)
         try:
-            await asyncio.sleep(random.uniform(1.0, 2.0))
+            await asyncio.sleep(random.uniform(0.5, 1.0))
         except asyncio.CancelledError:
             _LOGGER.warning("[DHLottery] 워밍업 대기 중 취소됨 - 스킵")
             self._cookies_initialized = True
             self._session_warmed_up = True
             return
 
-        # 2단계: 로그인 페이지 방문 (짧은 타임아웃, 재시도 없음)
+        # 2단계: 로그인 페이지 방문 (5초 타임아웃, 재시도 없음)
         headers = self._get_headers()
         headers["Referer"] = "https://www.dhlottery.co.kr/"
         headers["Sec-Fetch-Site"] = "same-origin"
@@ -997,9 +997,9 @@ class DonghangLotteryClient:
                 "https://www.dhlottery.co.kr/user.do?method=login",
                 headers=headers,
                 skip_throttle=True,
-                timeout=10,
+                timeout=5,
                 max_retries=0,
-                skip_circuit_breaker=True,  # 워밍업은 서킷 브레이커에 영향 없음
+                skip_circuit_breaker=True,
             )
         except asyncio.CancelledError:
             _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 취소됨 - 스킵")
@@ -1009,9 +1009,9 @@ class DonghangLotteryClient:
         except Exception as err:
             _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패 (스킵): %s", err)
 
-        # 짧은 대기 (1~2초)
+        # 짧은 대기 (0.5~1초)
         try:
-            await asyncio.sleep(random.uniform(1.0, 2.0))
+            await asyncio.sleep(random.uniform(0.5, 1.0))
         except asyncio.CancelledError:
             _LOGGER.warning("[DHLottery] 워밍업 완료 대기 중 취소됨")
             self._cookies_initialized = True

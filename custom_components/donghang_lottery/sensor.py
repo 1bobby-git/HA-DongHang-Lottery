@@ -228,37 +228,33 @@ class DonghangLotterySensor(CoordinatorEntity[DonghangLotteryCoordinator], Senso
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        """진단 속성 - 원시 API 데이터 및 연결 상태 노출."""
-        if self.entity_description.key != "last_update":
-            return None
+        """진단 속성 - 모든 센서에 연결 상태, last_update 센서에 원시 데이터."""
+        attrs: dict[str, Any] = {
+            "data_source": self.coordinator.data_source,
+            "data_loaded": self.coordinator._data_loaded,
+        }
+        if self.coordinator.last_error:
+            attrs["last_error"] = self.coordinator.last_error
 
-        attrs: dict[str, Any] = {}
+        # "최근 업데이트" 센서에만 전체 진단 + 원시 데이터 추가
+        if self.entity_description.key == "last_update":
+            # 클라이언트 연결 상태
+            try:
+                attrs["circuit_breaker"] = self.coordinator.client._circuit_state
+                attrs["consecutive_failures"] = self.coordinator.client._consecutive_failures
+                attrs["logged_in"] = self.coordinator.client._logged_in
+            except Exception:
+                pass
 
-        # 코디네이터 진단 정보
-        attrs.update(self.coordinator.debug_info)
-
-        # 원시 API 데이터
-        data: DonghangLotteryData | None = self.coordinator.data
-        if data:
-            # 계정 데이터
-            attrs["account_total_amount"] = data.account.total_amount
-            attrs["account_unconfirmed_count"] = data.account.unconfirmed_count
-            attrs["account_unclaimed_high_value"] = data.account.unclaimed_high_value_count
-
-            # 로또 645 원시 결과
-            if data.lotto645_result:
-                attrs["lotto645_raw"] = data.lotto645_result
-            else:
-                attrs["lotto645_raw"] = None
-
-            # 연금복권 720 원시 결과
-            if data.pension720_result:
-                attrs["pension720_raw"] = data.pension720_result
-            else:
-                attrs["pension720_raw"] = None
-
-            # 연금복권 720 회차
-            attrs["pension720_round"] = data.pension720_round
+            # 원시 API 데이터
+            data: DonghangLotteryData | None = self.coordinator.data
+            if data:
+                attrs["account_total_amount"] = data.account.total_amount
+                attrs["account_unconfirmed_count"] = data.account.unconfirmed_count
+                attrs["account_unclaimed_high_value"] = data.account.unclaimed_high_value_count
+                attrs["lotto645_raw"] = data.lotto645_result if data.lotto645_result else None
+                attrs["pension720_raw"] = data.pension720_result if data.pension720_result else None
+                attrs["pension720_round"] = data.pension720_round
 
         return attrs
 

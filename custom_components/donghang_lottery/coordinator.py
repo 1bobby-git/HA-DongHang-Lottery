@@ -22,7 +22,8 @@ from .const import (
 )
 
 # 최초 데이터 로드 타임아웃 (초) - HA setup timeout(60초)보다 짧아야 함
-FIRST_REFRESH_TIMEOUT = 30
+# v0.7.6: 30→45초 (워밍업에 시간이 소모되어 실제 로그인에 시간 부족했음)
+FIRST_REFRESH_TIMEOUT = 45
 
 # 백그라운드 재시도 설정
 RETRY_INTERVALS_MINUTES = [5, 10, 20, 30, 30]  # 점진적 간격 (최대 5회)
@@ -32,6 +33,11 @@ LOGGER = logging.getLogger(__name__)
 
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
     """동행복권 데이터 코디네이터.
+
+    v0.7.6 - 진단 속성 모든 센서 확장 + 타임아웃 예산 최적화:
+    - 모든 센서에 data_source/data_loaded/last_error 속성 추가
+    - 워밍업 타임아웃 10초→5초 (총 예산 24초→12초)
+    - 첫 로드 타임아웃 30초→45초 (실제 로그인 시간 확보)
 
     v0.7.5 - 진단 기능 강화:
     - 모든 API 호출 결과를 INFO 로그에 기록
