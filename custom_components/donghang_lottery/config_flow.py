@@ -12,9 +12,11 @@ from .const import (
     CONF_LOCATION_ENTITY,
     CONF_LOTTO_UPDATE_HOUR,
     CONF_PENSION_UPDATE_HOUR,
+    CONF_RELAY_URL,
     CONF_USE_PROXY,
     DEFAULT_LOTTO_UPDATE_HOUR,
     DEFAULT_PENSION_UPDATE_HOUR,
+    DEFAULT_RELAY_URL,
     DEFAULT_USE_PROXY,
     DOMAIN,
 )
@@ -44,6 +46,9 @@ class DonghangLotteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(
                     CONF_USE_PROXY, default=DEFAULT_USE_PROXY
                 ): bool,
+                vol.Optional(
+                    CONF_RELAY_URL, default=DEFAULT_RELAY_URL
+                ): str,
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema)
@@ -100,6 +105,13 @@ class DonghangLotteryOptionsFlowHandler(config_entries.OptionsFlow):
                         self._entry.data.get(CONF_USE_PROXY, DEFAULT_USE_PROXY),
                     ),
                 ): bool,
+                vol.Optional(
+                    CONF_RELAY_URL,
+                    default=self._entry.options.get(
+                        CONF_RELAY_URL,
+                        self._entry.data.get(CONF_RELAY_URL, DEFAULT_RELAY_URL),
+                    ),
+                ): str,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

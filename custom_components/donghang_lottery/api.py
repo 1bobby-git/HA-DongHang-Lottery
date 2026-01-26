@@ -13,7 +13,7 @@ import random
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from aiohttp import ClientResponse, ClientSession, ClientTimeout
 from bs4 import BeautifulSoup
@@ -213,8 +213,10 @@ class DonghangLotteryClient:
         max_retries: int = 3,                # 재시도 줄임: 3회
         retry_delay: float = 30.0,           # 더 긴 대기: 30초
         use_proxy: bool = False,             # 프록시 비활성화 (효과 없음)
+        relay_url: str = "",                 # Cloudflare Worker 릴레이 URL
     ) -> None:
         self._session = session
+        self._relay_url = relay_url.rstrip("/") if relay_url else ""
         self._username = username
         self._password = password
         self._timeout = 60  # 타임아웃 증가: 60초
@@ -277,11 +279,12 @@ class DonghangLotteryClient:
         self._proxy_initialized = True  # 스킵
 
         _LOGGER.info(
-            "[DHLottery] 클라이언트 초기화 (v0.7.0) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
+            "[DHLottery] 클라이언트 초기화 (v0.8.1) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개, 릴레이: %s",
             self._min_request_interval,
             self._max_request_interval,
             self._max_retries,
             len(USER_AGENTS),
+            self._relay_url or "직접연결",
         )
 
     async def _throttle_request(self) -> None:
@@ -444,15 +447,47 @@ class DonghangLotteryClient:
 
         _LOGGER.info("[DHLottery] ✓ 세션 완전 재초기화 완료")
 
+    def _resolve_url(self, url: str) -> str:
+        """릴레이 모드 시 URL을 릴레이 URL로 변환.
+
+        https://www.dhlottery.co.kr/path → relay_url/path
+        https://ol.dhlottery.co.kr/path → relay_url/ol/path
+        https://el.dhlottery.co.kr/path → relay_url/el/path
+        """
+        if not self._relay_url:
+            return url
+
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+
+        if host in ("www.dhlottery.co.kr", "dhlottery.co.kr"):
+            path = parsed.path or "/"
+            query = f"?{parsed.query}" if parsed.query else ""
+            return f"{self._relay_url}{path}{query}"
+        elif host == "ol.dhlottery.co.kr":
+            path = parsed.path or "/"
+            query = f"?{parsed.query}" if parsed.query else ""
+            return f"{self._relay_url}/ol{path}{query}"
+        elif host == "el.dhlottery.co.kr":
+            path = parsed.path or "/"
+            query = f"?{parsed.query}" if parsed.query else ""
+            return f"{self._relay_url}/el{path}{query}"
+
+        return url  # 알 수 없는 호스트는 그대로
+
     async def _quick_connectivity_check(self) -> bool:
         """서버 연결 가능 여부 빠른 확인 (20초 타임아웃, 진단 로그).
 
         v0.8.0: 타임아웃 10→20초, 상세 에러 분류, 대체 URL 시도.
         """
-        urls = [
-            "https://www.dhlottery.co.kr/",
-            "https://dhlottery.co.kr/",
-        ]
+        if self._relay_url:
+            urls = [f"{self._relay_url}/"]
+            _LOGGER.info("[DHLottery] 릴레이 모드 연결 테스트: %s", self._relay_url)
+        else:
+            urls = [
+                "https://www.dhlottery.co.kr/",
+                "https://dhlottery.co.kr/",
+            ]
         last_err = None
         for url in urls:
             try:
@@ -1106,7 +1141,10 @@ class DonghangLotteryClient:
         return binascii.hexlify(ciphertext).decode("utf-8")
 
     def _update_session_ids(self) -> None:
-        for base in ("https://www.dhlottery.co.kr/",):
+        bases = ["https://www.dhlottery.co.kr/"]
+        if self._relay_url:
+            bases.append(f"{self._relay_url}/")
+        for base in bases:
             cookies = self._session.cookie_jar.filter_cookies(URL(base))
             # 동행복권은 DHJSESSIONID를 사용함
             if "DHJSESSIONID" in cookies:
@@ -1429,6 +1467,7 @@ class DonghangLotteryClient:
                     request_headers[key] = value
 
             last_error: Exception | None = None
+            resolved_url = self._resolve_url(url)
             url_short = url.split("?")[0].split("/")[-1] or url
 
             for attempt in range(effective_retries + 1):
@@ -1441,7 +1480,7 @@ class DonghangLotteryClient:
                     # 직접 연결
                     resp = await self._session.request(
                         method,
-                        url,
+                        resolved_url,
                         headers=request_headers,
                         data=data,
                         params=params,

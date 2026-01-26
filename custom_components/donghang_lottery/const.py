@@ -16,11 +16,13 @@ CONF_LOCATION_ENTITY: Final = "location_entity"
 CONF_MIN_REQUEST_INTERVAL: Final = "min_request_interval"
 CONF_MAX_REQUEST_INTERVAL: Final = "max_request_interval"
 CONF_USE_PROXY: Final = "use_proxy"  # 프록시 사용 여부
+CONF_RELAY_URL: Final = "relay_url"  # Cloudflare Worker 릴레이 URL
 
 # 기본값 (강화됨: 차단 우회를 위해 요청 간격 증가)
 DEFAULT_MIN_REQUEST_INTERVAL: Final = 4.0  # 증가: 1.0 → 4.0
 DEFAULT_MAX_REQUEST_INTERVAL: Final = 10.0  # 증가: 3.0 → 10.0
 DEFAULT_USE_PROXY: Final = True  # 프록시 기본 활성화 (IP 차단 우회)
+DEFAULT_RELAY_URL: Final = ""  # 빈값 = 직접 연결, URL 입력 시 릴레이 경유
 
 # 당첨발표 업데이트 스케줄 설정
 CONF_LOTTO_UPDATE_HOUR: Final = "lotto_update_hour"

@@ -50,11 +50,13 @@ from .const import (
     CONF_LOCATION_ENTITY,
     CONF_LOTTO_UPDATE_HOUR,
     CONF_PENSION_UPDATE_HOUR,
+    CONF_RELAY_URL,
     CONF_USE_PROXY,
     DEFAULT_LOTTO_UPDATE_HOUR,
     DEFAULT_MAX_REQUEST_INTERVAL,
     DEFAULT_MIN_REQUEST_INTERVAL,
     DEFAULT_PENSION_UPDATE_HOUR,
+    DEFAULT_RELAY_URL,
     DEFAULT_USE_PROXY,
     DOMAIN,
     LOTTERY_LOTTO645,
@@ -102,6 +104,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_USE_PROXY, DEFAULT_USE_PROXY),
     )
 
+    # 릴레이 URL 설정 (Cloudflare Worker 경유)
+    relay_url = entry.options.get(
+        CONF_RELAY_URL,
+        entry.data.get(CONF_RELAY_URL, DEFAULT_RELAY_URL),
+    )
+
     # 당첨발표 업데이트 시간 설정
     lotto_update_hour = entry.options.get(
         CONF_LOTTO_UPDATE_HOUR,
@@ -144,7 +152,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             sock_connect=20,  # 소켓 연결 20초 (15→20)
             sock_read=30,
         ),
-        cookie_jar=aiohttp.CookieJar(),
+        cookie_jar=aiohttp.CookieJar(unsafe=bool(relay_url)),
     )
     client = DonghangLotteryClient(
         session,
@@ -153,6 +161,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         min_request_interval=min_interval,
         max_request_interval=max_interval,
         use_proxy=use_proxy,
+        relay_url=relay_url,
     )
     coordinator = DonghangLotteryCoordinator(
         hass, client,

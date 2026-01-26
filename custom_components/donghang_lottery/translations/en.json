@@ -10,12 +10,14 @@
           "location_entity": "Location entity",
           "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
           "pension_update_hour": "Pension 720+ result check hour (0~23)",
-          "use_proxy": "Use proxy (IP block bypass)"
+          "use_proxy": "Use proxy (IP block bypass)",
+          "relay_url": "Relay Server URL"
         },
         "data_description": {
           "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
           "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
-          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked."
+          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked.",
+          "relay_url": "Enter Cloudflare Worker relay URL. If your HA server cannot directly access dhlottery.co.kr, requests will be routed through the relay. Leave empty for direct connection."
         }
       }
     }
@@ -31,12 +33,14 @@
           "password": "Password",
           "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
           "pension_update_hour": "Pension 720+ result check hour (0~23)",
-          "use_proxy": "Use proxy (IP block bypass)"
+          "use_proxy": "Use proxy (IP block bypass)",
+          "relay_url": "Relay Server URL"
         },
         "data_description": {
           "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
           "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
-          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked."
+          "use_proxy": "Automatically collect free proxies to bypass IP blocks. Enable if your IP is already blocked.",
+          "relay_url": "Enter Cloudflare Worker relay URL. If your HA server cannot directly access dhlottery.co.kr, requests will be routed through the relay. Leave empty for direct connection."
         }
       }
     }
