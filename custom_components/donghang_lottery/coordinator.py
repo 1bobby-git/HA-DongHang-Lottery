@@ -33,6 +33,12 @@ LOGGER = logging.getLogger(__name__)
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
     """동행복권 데이터 코디네이터.
 
+    v0.7.5 - 진단 기능 강화:
+    - 모든 API 호출 결과를 INFO 로그에 기록
+    - "최근 업데이트" 센서에 전체 원시 데이터 속성 노출
+    - data_source / last_error / circuit_breaker 상태 추적
+    - 부분 실패 시 에러 요약 기록
+
     v0.7.4 - last_update_success_time 호환성 수정:
     - HA 버전별 last_update_success_time 미지원 문제 해결
     - 자체 last_update_time 프로퍼티로 마지막 업데이트 시간 관리
@@ -65,6 +71,8 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self._next_update_time: datetime | None = None
         self._last_update_time: datetime | None = None
         self._data_loaded = False  # 실제 API 데이터 로드 여부
+        self._last_error: str | None = None
+        self._data_source: str = "none"  # "none", "default", "api"
 
     async def async_config_entry_first_refresh(self) -> None:
         """최초 데이터 로드 및 스케줄 설정.
@@ -108,6 +116,9 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         async_set_updated_data()를 사용하여 last_update_success=True로 설정.
         이렇게 해야 엔티티가 'unavailable'이 아닌 기본값(0)으로 표시됨.
         """
+        self._data_source = "default"
+        self._last_error = "최초 데이터 로드 실패 - 기본값 사용 중"
+        LOGGER.info("[DHLottery] 기본 데이터 설정 (data_source=default)")
         self.async_set_updated_data(DonghangLotteryData(
             account=AccountSummary(
                 total_amount=0,
@@ -230,6 +241,33 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         """마지막 성공적 데이터 업데이트 시간."""
         return self._last_update_time
 
+    @property
+    def last_error(self) -> str | None:
+        """마지막 에러 메시지."""
+        return self._last_error
+
+    @property
+    def data_source(self) -> str:
+        """데이터 소스 ("none", "default", "api")."""
+        return self._data_source
+
+    @property
+    def debug_info(self) -> dict[str, Any]:
+        """진단 정보 (센서 속성으로 노출)."""
+        info: dict[str, Any] = {
+            "data_loaded": self._data_loaded,
+            "data_source": self._data_source,
+            "last_error": self._last_error,
+        }
+        # 클라이언트 상태
+        try:
+            info["circuit_breaker"] = self.client._circuit_state
+            info["consecutive_failures"] = self.client._consecutive_failures
+            info["logged_in"] = self.client._logged_in
+        except Exception:
+            pass
+        return info
+
     def async_cancel_scheduled_update(self) -> None:
         """스케줄된 업데이트 취소."""
         if self._scheduled_update_unsub:
@@ -245,18 +283,28 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         핵심 원칙: 절대 UpdateFailed를 발생시키지 않음.
         - 실패 시 기존 데이터 반환 → 엔티티 항상 available 유지
         - 부분 성공 시 성공한 데이터만 갱신, 나머지는 기존 데이터 보존
+        - 모든 API 응답을 INFO 로그에 기록 (진단용)
         """
         prev_data = self.data
+        errors: list[str] = []
 
         # 1. 계정 정보 조회
         try:
             account = await self.client.async_fetch_account_summary()
+            LOGGER.info(
+                "[DHLottery] ✓ 계정 데이터 수신 - 잔액: %s원, 미확인: %s건, 고액미수령: %s건",
+                account.total_amount, account.unconfirmed_count, account.unclaimed_high_value_count,
+            )
         except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] 계정 정보 조회 실패: %s", err)
+            LOGGER.warning("[DHLottery] ✗ 계정 정보 조회 실패: %s", err)
+            self._last_error = f"계정 조회 실패: {err}"
             # 기존 데이터 반환 (엔티티 available 유지)
             if prev_data is not None:
+                LOGGER.info("[DHLottery] 기존 데이터 보존 (data_source=%s)", self._data_source)
                 return prev_data
             # 최초 실패 시 기본 데이터
+            self._data_source = "default"
+            LOGGER.info("[DHLottery] 기본 데이터 반환 (data_source=default)")
             return DonghangLotteryData(
                 account=AccountSummary(
                     total_amount=0,
@@ -267,14 +315,25 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
 
         # 계정 조회 성공 → 데이터 로드 플래그 및 타임스탬프 설정
         self._data_loaded = True
+        self._data_source = "api"
         self._last_update_time = dt_util.now()
 
         # 2. 로또 6/45 결과 조회
         lotto_result: dict[str, Any] | None = None
         try:
             lotto_result = await self.client.async_get_lotto645_result()
+            if lotto_result:
+                LOGGER.info(
+                    "[DHLottery] ✓ 로또 645 데이터 수신 - 키: %s",
+                    list(lotto_result.keys()) if isinstance(lotto_result, dict) else type(lotto_result).__name__,
+                )
+                LOGGER.debug("[DHLottery] 로또 645 원시 데이터: %s", lotto_result)
+            else:
+                LOGGER.info("[DHLottery] ✓ 로또 645 조회 성공 - 데이터 없음 (빈 응답)")
+                errors.append("로또645: 빈 응답")
         except DonghangLotteryError as err:
-            LOGGER.debug("Failed to load lotto645 result: %s", err)
+            LOGGER.warning("[DHLottery] ✗ 로또 645 조회 실패: %s", err)
+            errors.append(f"로또645: {err}")
             if prev_data is not None:
                 lotto_result = prev_data.lotto645_result
 
@@ -282,8 +341,18 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         pension_result: dict[str, Any] | None = None
         try:
             pension_result = await self.client.async_get_pension720_result()
+            if pension_result:
+                LOGGER.info(
+                    "[DHLottery] ✓ 연금복권 720 데이터 수신 - 키: %s",
+                    list(pension_result.keys()) if isinstance(pension_result, dict) else type(pension_result).__name__,
+                )
+                LOGGER.debug("[DHLottery] 연금복권 720 원시 데이터: %s", pension_result)
+            else:
+                LOGGER.info("[DHLottery] ✓ 연금복권 720 조회 성공 - 데이터 없음 (빈 응답)")
+                errors.append("연금720: 빈 응답")
         except DonghangLotteryError as err:
-            LOGGER.debug("Failed to load pension720 result: %s", err)
+            LOGGER.warning("[DHLottery] ✗ 연금복권 720 조회 실패: %s", err)
+            errors.append(f"연금720: {err}")
             if prev_data is not None:
                 pension_result = prev_data.pension720_result
 
@@ -291,10 +360,27 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         pension_round: int | None = None
         try:
             pension_round = await self.client.async_get_latest_pension720_round()
+            LOGGER.info("[DHLottery] ✓ 연금복권 720 회차: %s", pension_round)
         except DonghangLotteryError as err:
-            LOGGER.debug("Failed to load pension720 round: %s", err)
+            LOGGER.warning("[DHLottery] ✗ 연금복권 720 회차 조회 실패: %s", err)
+            errors.append(f"연금720회차: {err}")
             if prev_data is not None:
                 pension_round = prev_data.pension720_round
+
+        # 에러 요약
+        if errors:
+            self._last_error = " | ".join(errors)
+            LOGGER.info("[DHLottery] 부분 실패: %s", self._last_error)
+        else:
+            self._last_error = None
+
+        LOGGER.info(
+            "[DHLottery] 데이터 업데이트 완료 - source=%s, 로또=%s, 연금=%s, 회차=%s",
+            self._data_source,
+            "있음" if lotto_result else "없음",
+            "있음" if pension_result else "없음",
+            pension_round,
+        )
 
         return DonghangLotteryData(
             account=account,

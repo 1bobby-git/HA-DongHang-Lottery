@@ -226,6 +226,42 @@ class DonghangLotterySensor(CoordinatorEntity[DonghangLotteryCoordinator], Senso
             return None
         return value_fn(data)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """진단 속성 - 원시 API 데이터 및 연결 상태 노출."""
+        if self.entity_description.key != "last_update":
+            return None
+
+        attrs: dict[str, Any] = {}
+
+        # 코디네이터 진단 정보
+        attrs.update(self.coordinator.debug_info)
+
+        # 원시 API 데이터
+        data: DonghangLotteryData | None = self.coordinator.data
+        if data:
+            # 계정 데이터
+            attrs["account_total_amount"] = data.account.total_amount
+            attrs["account_unconfirmed_count"] = data.account.unconfirmed_count
+            attrs["account_unclaimed_high_value"] = data.account.unclaimed_high_value_count
+
+            # 로또 645 원시 결과
+            if data.lotto645_result:
+                attrs["lotto645_raw"] = data.lotto645_result
+            else:
+                attrs["lotto645_raw"] = None
+
+            # 연금복권 720 원시 결과
+            if data.pension720_result:
+                attrs["pension720_raw"] = data.pension720_result
+            else:
+                attrs["pension720_raw"] = None
+
+            # 연금복권 720 회차
+            attrs["pension720_round"] = data.pension720_round
+
+        return attrs
+
 
 def _get_lotto645_item(data: DonghangLotteryData) -> dict[str, Any]:
     result = data.lotto645_result or {}
