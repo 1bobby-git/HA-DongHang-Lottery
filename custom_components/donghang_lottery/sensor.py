@@ -151,7 +151,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
         icon="mdi:trophy",
         native_unit_of_measurement="KRW",
         value_fn=lambda data: _safe_int(
-            _first_present(_get_pension720_item(data), ["rnk1WnAmt", "wnAmt1", "winAmt1"])
+            _first_present(_get_pension720_item(data), ["rnk1WnAmt", "wnAmt", "wnAmt1", "winAmt1"])
         ),
         device_group="pension",
     ),
@@ -159,7 +159,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
         key="pension720_first_winners",
         translation_key="pension720_first_winners",
         value_fn=lambda data: _safe_int(
-            _first_present(_get_pension720_item(data), ["rnk1WnNope", "wnNope1", "winNope1", "wnCnt1"])
+            _first_present(_get_pension720_item(data), ["rnk1WnNope", "wnTotalCnt", "wnNope1", "winNope1", "wnCnt1"])
         ),
         device_group="pension",
     ),
@@ -172,7 +172,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="pension720_number",
         translation_key="pension720_number",
-        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnNo", "wnNumber", "wnNum"]),
+        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnNo", "wnBndNo", "wnNumber", "wnNum"]),
         device_group="pension",
     ),
 )
@@ -261,6 +261,11 @@ class DonghangLotterySensor(CoordinatorEntity[DonghangLotteryCoordinator], Senso
 
 def _get_lotto645_item(data: DonghangLotteryData) -> dict[str, Any]:
     result = data.lotto645_result or {}
+    # api.py returns {drwNo, drwtNo1, ..., _raw: {ltEpsd, tm1WnNo, ...}}
+    # 센서는 원본 API 키(ltEpsd, tm1WnNo 등)를 사용하므로 _raw 반환
+    if "_raw" in result:
+        return result["_raw"]
+    # 폴백: 중첩된 응답 구조 탐색
     payload = result.get("data", result)
     if isinstance(payload, dict):
         items = payload.get("list") or payload.get("result") or payload.get("data")
@@ -285,11 +290,15 @@ def _get_lotto645_numbers(item: dict[str, Any]) -> list[int]:
 
 def _get_pension720_item(data: DonghangLotteryData) -> dict[str, Any]:
     result = data.pension720_result or {}
-    payload = result.get("result") or result.get("data") or result
-    if isinstance(payload, dict):
-        return payload
-    if isinstance(payload, list) and payload:
-        return payload[0]
+    # API 응답: {resultCode, resultMessage, data: {result: [{...}]}}
+    inner = result.get("data") or result
+    if isinstance(inner, dict):
+        items = inner.get("result") or inner.get("list")
+        if isinstance(items, list) and items:
+            return items[0]
+        return inner
+    if isinstance(inner, list) and inner:
+        return inner[0]
     return {}
 
 

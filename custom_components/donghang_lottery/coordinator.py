@@ -34,6 +34,11 @@ LOGGER = logging.getLogger(__name__)
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
     """동행복권 데이터 코디네이터.
 
+    v0.7.7 - 센서 데이터 파싱 버그 수정 (테스트 결과 기반):
+    - 로또645: api.py가 변환한 키 대신 원본 API 키(_raw) 사용하도록 수정
+    - 연금복권720: 중첩 구조 {data: {result: [...]}} 올바르게 탐색하도록 수정
+    - 연금복권720: 실제 API 키 폴백 추가 (wnAmt, wnTotalCnt, wnBndNo)
+
     v0.7.6 - 진단 속성 모든 센서 확장 + 타임아웃 예산 최적화:
     - 모든 센서에 data_source/data_loaded/last_error 속성 추가
     - 워밍업 타임아웃 10초→5초 (총 예산 24초→12초)
