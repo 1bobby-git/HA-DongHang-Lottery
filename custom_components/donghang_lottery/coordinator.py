@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -15,6 +16,9 @@ from typing import Any
 
 from .api import AccountSummary, DonghangLotteryClient, DonghangLotteryError
 from .const import DOMAIN
+
+# 최초 데이터 로드 타임아웃 (초) - HA setup timeout(60초)보다 짧아야 함
+FIRST_REFRESH_TIMEOUT = 30
 
 
 LOGGER = logging.getLogger(__name__)
@@ -91,9 +95,68 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self._next_update_time: datetime | None = None
 
     async def async_config_entry_first_refresh(self) -> None:
-        """최초 데이터 로드 및 스케줄 설정."""
-        await super().async_config_entry_first_refresh()
+        """최초 데이터 로드 및 스케줄 설정 (v0.6.0 강력한 우회 정책).
+
+        HA setup timeout(60초) 내에 반드시 완료되도록 30초 타임아웃 적용.
+        실패 시에도 기본 데이터로 설정하고 setup을 중단하지 않음.
+        백그라운드에서 자동 재시도.
+        """
+        try:
+            await asyncio.wait_for(
+                super().async_config_entry_first_refresh(),
+                timeout=FIRST_REFRESH_TIMEOUT,
+            )
+            LOGGER.info("[DHLottery] 최초 데이터 로드 성공")
+        except asyncio.TimeoutError:
+            LOGGER.warning(
+                "[DHLottery] 최초 데이터 로드 타임아웃 (%d초) - 기본 데이터로 시작, 백그라운드 재시도 예정",
+                FIRST_REFRESH_TIMEOUT,
+            )
+            self._set_default_data()
+        except asyncio.CancelledError:
+            LOGGER.warning(
+                "[DHLottery] 최초 데이터 로드 취소됨 (CancelledError) - 기본 데이터로 시작"
+            )
+            self._set_default_data()
+        except Exception as err:
+            LOGGER.warning(
+                "[DHLottery] 최초 데이터 로드 실패: %s - 기본 데이터로 시작, 백그라운드 재시도 예정",
+                err,
+            )
+            self._set_default_data()
+
         self._schedule_next_update()
+        # 최초 로드 실패 시 5분 후 백그라운드 재시도
+        if self.data is None or (
+            self.data and self.data.account.total_amount == 0
+            and self.data.lotto645_result is None
+        ):
+            self._schedule_background_retry()
+
+    def _set_default_data(self) -> None:
+        """기본 빈 데이터 설정 (연결 실패 시)."""
+        self.data = DonghangLotteryData(
+            account=AccountSummary(
+                total_amount=0,
+                unconfirmed_count=0,
+                unclaimed_high_value_count=0,
+            ),
+        )
+
+    def _schedule_background_retry(self) -> None:
+        """백그라운드 데이터 재시도 스케줄 (5분 후)."""
+        retry_time = dt_util.now() + timedelta(minutes=5)
+        LOGGER.info(
+            "[DHLottery] 백그라운드 재시도 예정: %s",
+            retry_time.strftime("%H:%M:%S"),
+        )
+
+        @callback
+        def _retry_refresh(_now: datetime) -> None:
+            LOGGER.info("[DHLottery] 백그라운드 데이터 재시도 시작")
+            self.hass.async_create_task(self.async_request_refresh())
+
+        async_track_point_in_time(self.hass, _retry_refresh, retry_time)
 
     def _schedule_next_update(self) -> None:
         """다음 추첨 후 업데이트 스케줄."""

@@ -1,8 +1,9 @@
 # custom_components/donghang_lottery/__init__.py
-"""동행복권 Home Assistant 통합 - 강화된 차단 우회 기능 포함."""
+"""동행복권 Home Assistant 통합 - v0.6.0 강력한 우회 정책."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import random
@@ -137,6 +138,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await coordinator.async_config_entry_first_refresh()
+    except asyncio.CancelledError:
+        # HA setup timeout에 의한 취소 - 절대 전파하지 않음
+        LOGGER.warning(
+            "[DHLottery] Setup 중 CancelledError 발생 - 무시하고 setup 계속 진행"
+        )
     except DonghangLotteryError as err:
         LOGGER.debug("Initial refresh failed, continuing setup: %s", err)
     except Exception as err:

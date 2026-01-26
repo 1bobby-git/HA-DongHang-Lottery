@@ -1,5 +1,5 @@
 # custom_components/donghang_lottery/api.py
-"""동행복권 API 클라이언트 - 강화된 차단 우회 기능 포함."""
+"""동행복권 API 클라이언트 - v0.6.0 강력한 우회 정책."""
 
 from __future__ import annotations
 
@@ -189,12 +189,13 @@ class WinningRecord:
 class DonghangLotteryClient:
     """동행복권 API 클라이언트.
 
-    v0.5.0 - 강화된 직접 연결 전략 (프록시 없이 안정적 동작):
-    - 더 긴 요청 간격 (8~20초, 인간적 패턴)
-    - 완전한 브라우저 시뮬레이션 (쿠키 워밍, 네비게이션 패턴)
+    v0.6.0 - 강력한 우회 정책 (HA setup timeout 완전 대응):
+    - CancelledError 즉시 전파 (HA 60초 setup timeout 보호)
+    - 워밍업 빠른 실패 (10초 타임아웃, 재시도 없음)
+    - 타임아웃/재시도 횟수 요청별 오버라이드
     - 서킷 브레이커 + 긴 쿨다운 (IP 차단 시 자동 복구 대기)
     - 요청 실패 시 세션 완전 재초기화
-    - 프록시 기능 제거 (무료 프록시는 효과 없음)
+    - 워밍업 실패해도 로그인 시도 계속 진행
     """
 
     # 서킷 브레이커 상태
@@ -272,7 +273,7 @@ class DonghangLotteryClient:
         self._proxy_initialized = True  # 스킵
 
         _LOGGER.info(
-            "[DHLottery] 클라이언트 초기화 (v0.5.0 강화 직접 연결) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
+            "[DHLottery] 클라이언트 초기화 (v0.6.0 강력한 우회 정책) - 요청간격: %.1f~%.1fs, 재시도: %d회, UA풀: %d개",
             self._min_request_interval,
             self._max_request_interval,
             self._max_retries,
@@ -945,15 +946,19 @@ class DonghangLotteryClient:
         return key
 
     async def _warmup_login_pages(self) -> None:
-        """로그인 페이지 워밍업 (완전한 브라우저 시뮬레이션).
+        """로그인 페이지 워밍업 (v0.6.0 강력한 우회 정책).
 
-        v0.5.0: 실제 사용자처럼 페이지를 순서대로 방문하여 쿠키와 세션 초기화.
+        빠른 실패 전략:
+        - 짧은 타임아웃 (10초) + 재시도 없음 (1회 시도)
+        - CancelledError 시 즉시 반환 (HA setup timeout 보호)
+        - 워밍업 실패해도 로그인 시도 계속 진행
+        - 실패 시 백그라운드에서 나중에 다시 시도
         """
-        _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작...")
+        _LOGGER.info("[DHLottery] 브라우저 세션 워밍업 시작 (빠른 모드)...")
 
-        # 1단계: 메인 페이지 방문 (첫 방문자처럼)
+        # 1단계: 메인 페이지 방문 (짧은 타임아웃, 재시도 없음)
         headers = self._get_headers()
-        headers["Sec-Fetch-Site"] = "none"  # 직접 URL 입력
+        headers["Sec-Fetch-Site"] = "none"
         headers["Sec-Fetch-User"] = "?1"
 
         try:
@@ -961,15 +966,26 @@ class DonghangLotteryClient:
                 "GET",
                 "https://www.dhlottery.co.kr/",
                 headers=headers,
-                skip_throttle=True,  # 워밍업 중 스로틀 스킵
+                skip_throttle=True,
+                timeout=10,       # 10초 타임아웃 (빠른 실패)
+                max_retries=0,    # 재시도 없음
             )
+        except asyncio.CancelledError:
+            _LOGGER.warning("[DHLottery] 워밍업 취소됨 (CancelledError) - 스킵")
+            return
         except Exception as err:
-            _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패: %s", err)
+            _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패 (스킵): %s", err)
 
-        # 사람처럼 페이지 읽는 시간 (3~6초)
-        await asyncio.sleep(random.uniform(3.0, 6.0))
+        # 짧은 대기 (1~2초) - CancelledError 보호
+        try:
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+        except asyncio.CancelledError:
+            _LOGGER.warning("[DHLottery] 워밍업 대기 중 취소됨 - 스킵")
+            self._cookies_initialized = True
+            self._session_warmed_up = True
+            return
 
-        # 2단계: 메인 페이지에서 로그인 링크 클릭 (네비게이션)
+        # 2단계: 로그인 페이지 방문 (짧은 타임아웃, 재시도 없음)
         headers = self._get_headers()
         headers["Referer"] = "https://www.dhlottery.co.kr/"
         headers["Sec-Fetch-Site"] = "same-origin"
@@ -980,12 +996,25 @@ class DonghangLotteryClient:
                 "https://www.dhlottery.co.kr/user.do?method=login",
                 headers=headers,
                 skip_throttle=True,
+                timeout=10,
+                max_retries=0,
             )
+        except asyncio.CancelledError:
+            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 취소됨 - 스킵")
+            self._cookies_initialized = True
+            self._session_warmed_up = True
+            return
         except Exception as err:
-            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패: %s", err)
+            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패 (스킵): %s", err)
 
-        # 로그인 폼 보는 시간 (2~4초)
-        await asyncio.sleep(random.uniform(2.0, 4.0))
+        # 짧은 대기 (1~2초)
+        try:
+            await asyncio.sleep(random.uniform(1.0, 2.0))
+        except asyncio.CancelledError:
+            _LOGGER.warning("[DHLottery] 워밍업 완료 대기 중 취소됨")
+            self._cookies_initialized = True
+            self._session_warmed_up = True
+            return
 
         self._cookies_initialized = True
         self._session_warmed_up = True
@@ -1283,15 +1312,20 @@ class DonghangLotteryClient:
         data: Any = None,
         params: dict[str, Any] | None = None,
         skip_throttle: bool = False,
+        timeout: int | None = None,
+        max_retries: int | None = None,
     ) -> ClientResponse:
-        """HTTP 요청 (v0.5.0 강화된 직접 연결).
+        """HTTP 요청 (v0.6.0 강력한 우회 정책).
 
-        프록시 없이 안정적으로 동작하는 직접 연결 전략:
-        - 더 긴 요청 간격 (8~20초)
+        강화된 직접 연결 전략:
+        - CancelledError 즉시 전파 (HA setup timeout 대응)
+        - 타임아웃/재시도 횟수 오버라이드 지원
         - 서킷 브레이커 + 긴 쿨다운 (차단 감지 시 자동 복구 대기)
         - 세션 완전 재초기화 (차단 시)
-        - 인간적인 재시도 패턴
         """
+        effective_timeout = timeout if timeout is not None else self._timeout
+        effective_retries = max_retries if max_retries is not None else self._max_retries
+
         # 세마포어로 동시 요청 제한
         async with self._request_semaphore:
             # 서킷 브레이커 확인
@@ -1317,11 +1351,11 @@ class DonghangLotteryClient:
             last_error: Exception | None = None
             url_short = url.split("?")[0].split("/")[-1] or url
 
-            for attempt in range(self._max_retries + 1):
+            for attempt in range(effective_retries + 1):
                 try:
                     _LOGGER.debug(
-                        "[DHLottery] 요청: %s %s (시도 %d/%d)",
-                        method, url_short, attempt + 1, self._max_retries + 1,
+                        "[DHLottery] 요청: %s %s (시도 %d/%d, 타임아웃 %ds)",
+                        method, url_short, attempt + 1, effective_retries + 1, effective_timeout,
                     )
 
                     # 직접 연결
@@ -1331,7 +1365,7 @@ class DonghangLotteryClient:
                         headers=request_headers,
                         data=data,
                         params=params,
-                        timeout=self._timeout,
+                        timeout=effective_timeout,
                     )
 
                     # 성공적인 응답 (200 OK)
@@ -1344,7 +1378,7 @@ class DonghangLotteryClient:
                     if resp.status == 401:
                         _LOGGER.warning("[DHLottery] 401 Unauthorized - 세션 재초기화")
                         await self._full_session_reset()
-                        if attempt < self._max_retries:
+                        if attempt < effective_retries:
                             await asyncio.sleep(random.uniform(5, 10))
                             await self.async_login(force=True)
                             cookie_header = self._get_cookie_header()
@@ -1360,7 +1394,7 @@ class DonghangLotteryClient:
                             self._consecutive_failures
                         )
 
-                        if attempt < self._max_retries:
+                        if attempt < effective_retries:
                             # 세션 재초기화 + 긴 대기
                             await self._full_session_reset()
                             delay = min(
@@ -1381,7 +1415,7 @@ class DonghangLotteryClient:
                             self._consecutive_failures
                         )
 
-                        if attempt < self._max_retries:
+                        if attempt < effective_retries:
                             delay = min(
                                 self._max_backoff_delay,
                                 60 * (2 ** attempt) + random.uniform(30, 60)
@@ -1393,7 +1427,7 @@ class DonghangLotteryClient:
                     # 서버 에러 (5xx)
                     if resp.status >= 500:
                         _LOGGER.warning("[DHLottery] 서버 에러 %s - 재시도", resp.status)
-                        if attempt < self._max_retries:
+                        if attempt < effective_retries:
                             delay = self._retry_delay + random.uniform(5, 15)
                             await asyncio.sleep(delay)
                             continue
@@ -1404,29 +1438,45 @@ class DonghangLotteryClient:
 
                     return resp
 
+                except asyncio.CancelledError:
+                    # HA setup timeout 등에 의한 취소 - 즉시 전파 (재시도하지 않음)
+                    _LOGGER.warning(
+                        "[DHLottery] 요청 취소됨 (CancelledError): %s - 즉시 전파",
+                        url_short,
+                    )
+                    raise
+
                 except asyncio.TimeoutError as err:
                     last_error = err
                     _LOGGER.warning(
                         "[DHLottery] 타임아웃: %s (시도 %d/%d)",
-                        url_short, attempt + 1, self._max_retries + 1
+                        url_short, attempt + 1, effective_retries + 1
                     )
-                    if attempt < self._max_retries:
+                    if attempt < effective_retries:
                         delay = self._retry_delay + random.uniform(10, 20)
-                        await asyncio.sleep(delay)
+                        try:
+                            await asyncio.sleep(delay)
+                        except asyncio.CancelledError:
+                            _LOGGER.warning("[DHLottery] 재시도 대기 중 취소됨: %s", url_short)
+                            raise
                         continue
 
                 except Exception as err:
                     last_error = err
                     _LOGGER.warning("[DHLottery] 요청 에러: %s - %s", url_short, err)
-                    if attempt < self._max_retries:
+                    if attempt < effective_retries:
                         delay = self._retry_delay + random.uniform(5, 15)
-                        await asyncio.sleep(delay)
+                        try:
+                            await asyncio.sleep(delay)
+                        except asyncio.CancelledError:
+                            _LOGGER.warning("[DHLottery] 재시도 대기 중 취소됨: %s", url_short)
+                            raise
                         continue
 
             # 모든 재시도 실패
             self._record_failure()
             raise DonghangLotteryError(
-                f"요청 실패 ({self._max_retries + 1}회 시도 후): {url_short}"
+                f"요청 실패 ({effective_retries + 1}회 시도 후): {url_short}"
             ) from last_error
 
     async def _get_json(
