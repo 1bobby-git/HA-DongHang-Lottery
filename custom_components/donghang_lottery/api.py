@@ -229,10 +229,16 @@ class DonghangLotteryClient:
         self._block_size = 16
 
         # ============================================================
-        # 강화된 차단 방지 설정 (직접 연결 최적화)
+        # 차단 방지 설정 (모드별 최적화)
         # ============================================================
-        self._min_request_interval = max(min_request_interval, 8.0)   # 최소 8초 보장
-        self._max_request_interval = max(max_request_interval, 20.0)  # 최소 20초 보장
+        if self._relay_url:
+            # 릴레이 모드: CF Worker가 요청 대행 → 짧은 간격 허용
+            self._min_request_interval = 0.3
+            self._max_request_interval = 1.0
+        else:
+            # 직접 연결: IP 차단 방지를 위해 긴 간격 유지
+            self._min_request_interval = max(min_request_interval, 8.0)
+            self._max_request_interval = max(max_request_interval, 20.0)
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._max_backoff_delay = 300.0  # 최대 백오프 5분
@@ -1041,11 +1047,19 @@ class DonghangLotteryClient:
         """로그인 페이지 워밍업 (v0.7.8 적응형).
 
         적응형 전략:
+        - 릴레이 모드: 워밍업 완전 건너뛰기 (CF Worker가 연결 처리)
         - 연속 실패 시 워밍업 건너뛰기 (시간 절약)
         - 짧은 타임아웃 (5초) + 재시도 없음 (1회 시도)
         - CancelledError 시 즉시 반환 (HA setup timeout 보호)
         - 연결 사전 테스트 통과 시 쿠키 이미 획득됨 → 워밍업 간소화
         """
+        # 릴레이 모드: 워밍업 불필요 (연결 테스트에서 이미 쿠키 획득)
+        if self._relay_url:
+            _LOGGER.info("[DHLottery] 릴레이 모드: 워밍업 건너뛰기")
+            self._cookies_initialized = True
+            self._session_warmed_up = True
+            return
+
         # 적응형: 연속 실패 시 건너뛰기
         if self._warmup_failures >= self._warmup_skip_threshold:
             _LOGGER.info(
