@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from dataclasses import dataclass
@@ -24,6 +24,8 @@ from .const import (
 # 최초 데이터 로드 타임아웃 (초) - HA setup timeout(60초)보다 짧아야 함
 FIRST_REFRESH_TIMEOUT = 30
 
+# 백그라운드 재시도 설정
+RETRY_INTERVALS_MINUTES = [5, 10, 20, 30, 30]  # 점진적 간격 (최대 5회)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,10 +33,11 @@ LOGGER = logging.getLogger(__name__)
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
     """동행복권 데이터 코디네이터.
 
-    추첨 시간 기반 스마트 업데이트:
-    - 초기 로드 후 다음 추첨 시간까지 대기
-    - 추첨 후 자동 업데이트
-    - 불필요한 API 호출 최소화
+    v0.7.3 - 무중단 데이터 보존:
+    - 업데이트 실패 시 기존 데이터 보존 (UpdateFailed 미발생)
+    - 엔티티가 항상 available 상태 유지
+    - 점진적 백그라운드 재시도 (5분 → 10분 → 20분 → 30분)
+    - 추첨 시간 기반 스마트 업데이트
     """
 
     def __init__(
@@ -54,14 +57,15 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self._lotto_update_hour = lotto_update_hour
         self._pension_update_hour = pension_update_hour
         self._scheduled_update_unsub = None
+        self._retry_unsub = None
         self._next_update_time: datetime | None = None
+        self._data_loaded = False  # 실제 API 데이터 로드 여부
 
     async def async_config_entry_first_refresh(self) -> None:
-        """최초 데이터 로드 및 스케줄 설정 (v0.6.0 강력한 우회 정책).
+        """최초 데이터 로드 및 스케줄 설정.
 
         HA setup timeout(60초) 내에 반드시 완료되도록 30초 타임아웃 적용.
         실패 시에도 기본 데이터로 설정하고 setup을 중단하지 않음.
-        백그라운드에서 자동 재시도.
         """
         try:
             await asyncio.wait_for(
@@ -69,9 +73,10 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                 timeout=FIRST_REFRESH_TIMEOUT,
             )
             LOGGER.info("[DHLottery] 최초 데이터 로드 성공")
+            self._data_loaded = True
         except asyncio.TimeoutError:
             LOGGER.warning(
-                "[DHLottery] 최초 데이터 로드 타임아웃 (%d초) - 기본 데이터로 시작, 백그라운드 재시도 예정",
+                "[DHLottery] 최초 데이터 로드 타임아웃 (%d초) - 기본 데이터로 시작",
                 FIRST_REFRESH_TIMEOUT,
             )
             self._set_default_data()
@@ -82,18 +87,15 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             self._set_default_data()
         except Exception as err:
             LOGGER.warning(
-                "[DHLottery] 최초 데이터 로드 실패: %s - 기본 데이터로 시작, 백그라운드 재시도 예정",
+                "[DHLottery] 최초 데이터 로드 실패: %s - 기본 데이터로 시작",
                 err,
             )
             self._set_default_data()
 
         self._schedule_next_update()
-        # 최초 로드 실패 시 5분 후 백그라운드 재시도
-        if self.data is None or (
-            self.data and self.data.account.total_amount == 0
-            and self.data.lotto645_result is None
-        ):
-            self._schedule_background_retry()
+        # 데이터 미로드 시 백그라운드 재시도
+        if not self._data_loaded:
+            self._schedule_background_retry(0)
 
     def _set_default_data(self) -> None:
         """기본 빈 데이터 설정 (연결 실패 시).
@@ -109,20 +111,49 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             ),
         ))
 
-    def _schedule_background_retry(self) -> None:
-        """백그라운드 데이터 재시도 스케줄 (5분 후)."""
-        retry_time = dt_util.now() + timedelta(minutes=5)
+    def _schedule_background_retry(self, attempt: int) -> None:
+        """백그라운드 데이터 재시도 스케줄 (점진적 간격)."""
+        # 기존 재시도 스케줄 취소
+        if self._retry_unsub:
+            self._retry_unsub()
+            self._retry_unsub = None
+
+        if attempt >= len(RETRY_INTERVALS_MINUTES):
+            LOGGER.info(
+                "[DHLottery] 백그라운드 재시도 한도 초과 (%d회) - 다음 예정 업데이트까지 대기",
+                attempt,
+            )
+            return
+
+        delay_minutes = RETRY_INTERVALS_MINUTES[attempt]
+        retry_time = dt_util.now() + timedelta(minutes=delay_minutes)
         LOGGER.info(
-            "[DHLottery] 백그라운드 재시도 예정: %s",
+            "[DHLottery] 백그라운드 재시도 예정: %s (%d분 후, %d/%d회)",
             retry_time.strftime("%H:%M:%S"),
+            delay_minutes,
+            attempt + 1,
+            len(RETRY_INTERVALS_MINUTES),
         )
+
+        next_attempt = attempt + 1
 
         @callback
         def _retry_refresh(_now: datetime) -> None:
-            LOGGER.info("[DHLottery] 백그라운드 데이터 재시도 시작")
-            self.hass.async_create_task(self.async_request_refresh())
+            self._retry_unsub = None
+            LOGGER.info("[DHLottery] 백그라운드 재시도 시작 (%d/%d)", next_attempt, len(RETRY_INTERVALS_MINUTES))
+            self.hass.async_create_task(self._async_background_retry(next_attempt))
 
-        async_track_point_in_time(self.hass, _retry_refresh, retry_time)
+        self._retry_unsub = async_track_point_in_time(
+            self.hass, _retry_refresh, retry_time
+        )
+
+    async def _async_background_retry(self, next_attempt: int) -> None:
+        """백그라운드 재시도 실행. 실패 시 다음 재시도 스케줄."""
+        await self.async_request_refresh()
+        if not self._data_loaded:
+            self._schedule_background_retry(next_attempt)
+        else:
+            LOGGER.info("[DHLottery] 백그라운드 재시도 성공 - 데이터 로드 완료")
 
     def _get_next_draw_time(self) -> datetime:
         """다음 당첨발표 확인 시간 계산 (목요일 또는 토요일 중 빠른 것)."""
@@ -194,31 +225,65 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         if self._scheduled_update_unsub:
             self._scheduled_update_unsub()
             self._scheduled_update_unsub = None
+        if self._retry_unsub:
+            self._retry_unsub()
+            self._retry_unsub = None
 
     async def _async_update_data(self) -> "DonghangLotteryData":
+        """데이터 업데이트 (실패 시 기존 데이터 보존 - UpdateFailed 미발생).
+
+        핵심 원칙: 절대 UpdateFailed를 발생시키지 않음.
+        - 실패 시 기존 데이터 반환 → 엔티티 항상 available 유지
+        - 부분 성공 시 성공한 데이터만 갱신, 나머지는 기존 데이터 보존
+        """
+        prev_data = self.data
+
+        # 1. 계정 정보 조회
         try:
             account = await self.client.async_fetch_account_summary()
         except DonghangLotteryError as err:
-            raise UpdateFailed(str(err)) from err
+            LOGGER.warning("[DHLottery] 계정 정보 조회 실패: %s", err)
+            # 기존 데이터 반환 (엔티티 available 유지)
+            if prev_data is not None:
+                return prev_data
+            # 최초 실패 시 기본 데이터
+            return DonghangLotteryData(
+                account=AccountSummary(
+                    total_amount=0,
+                    unconfirmed_count=0,
+                    unclaimed_high_value_count=0,
+                ),
+            )
 
+        # 계정 조회 성공 → 데이터 로드 플래그 설정
+        self._data_loaded = True
+
+        # 2. 로또 6/45 결과 조회
         lotto_result: dict[str, Any] | None = None
-        pension_result: dict[str, Any] | None = None
-        pension_round: int | None = None
-
         try:
             lotto_result = await self.client.async_get_lotto645_result()
         except DonghangLotteryError as err:
             LOGGER.debug("Failed to load lotto645 result: %s", err)
+            if prev_data is not None:
+                lotto_result = prev_data.lotto645_result
 
+        # 3. 연금복권 720+ 결과 조회
+        pension_result: dict[str, Any] | None = None
         try:
             pension_result = await self.client.async_get_pension720_result()
         except DonghangLotteryError as err:
             LOGGER.debug("Failed to load pension720 result: %s", err)
+            if prev_data is not None:
+                pension_result = prev_data.pension720_result
 
+        # 4. 연금복권 720+ 최신 회차 조회
+        pension_round: int | None = None
         try:
             pension_round = await self.client.async_get_latest_pension720_round()
         except DonghangLotteryError as err:
             LOGGER.debug("Failed to load pension720 round: %s", err)
+            if prev_data is not None:
+                pension_round = prev_data.pension720_round
 
         return DonghangLotteryData(
             account=account,
