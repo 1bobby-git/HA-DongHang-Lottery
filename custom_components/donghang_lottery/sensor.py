@@ -166,13 +166,13 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
     DonghangLotterySensorDescription(
         key="pension720_group",
         translation_key="pension720_group",
-        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnRnkVl", "wnRnk", "wnGroup"]),
+        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnBndNo", "wnRnk", "wnGroup"]),
         device_group="pension",
     ),
     DonghangLotterySensorDescription(
         key="pension720_number",
         translation_key="pension720_number",
-        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnNo", "wnBndNo", "wnNumber", "wnNum"]),
+        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnRnkVl", "wnNo", "wnNumber", "wnNum"]),
         device_group="pension",
     ),
 )
@@ -290,11 +290,16 @@ def _get_lotto645_numbers(item: dict[str, Any]) -> list[int]:
 
 def _get_pension720_item(data: DonghangLotteryData) -> dict[str, Any]:
     result = data.pension720_result or {}
-    # API 응답: {resultCode, resultMessage, data: {result: [{...}]}}
+    # API 응답: {resultCode, resultMessage, data: {result: [{...}, ...]}}
+    # 여러 회차의 등수별 항목이 포함됨 (wnSqNo: 1=1등, 2=2등, ..., 7=7등, 21=보너스)
     inner = result.get("data") or result
     if isinstance(inner, dict):
         items = inner.get("result") or inner.get("list")
         if isinstance(items, list) and items:
+            # 1등 항목 우선 선택 (wnSqNo == 1)
+            for item in items:
+                if item.get("wnSqNo") == 1:
+                    return item
             return items[0]
         return inner
     if isinstance(inner, list) and inner:
