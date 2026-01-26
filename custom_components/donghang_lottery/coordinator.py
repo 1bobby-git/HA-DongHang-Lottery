@@ -33,6 +33,10 @@ LOGGER = logging.getLogger(__name__)
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
     """동행복권 데이터 코디네이터.
 
+    v0.7.4 - last_update_success_time 호환성 수정:
+    - HA 버전별 last_update_success_time 미지원 문제 해결
+    - 자체 last_update_time 프로퍼티로 마지막 업데이트 시간 관리
+
     v0.7.3 - 무중단 데이터 보존:
     - 업데이트 실패 시 기존 데이터 보존 (UpdateFailed 미발생)
     - 엔티티가 항상 available 상태 유지
@@ -59,6 +63,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self._scheduled_update_unsub = None
         self._retry_unsub = None
         self._next_update_time: datetime | None = None
+        self._last_update_time: datetime | None = None
         self._data_loaded = False  # 실제 API 데이터 로드 여부
 
     async def async_config_entry_first_refresh(self) -> None:
@@ -220,6 +225,11 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         """다음 업데이트 예정 시간."""
         return self._next_update_time
 
+    @property
+    def last_update_time(self) -> datetime | None:
+        """마지막 성공적 데이터 업데이트 시간."""
+        return self._last_update_time
+
     def async_cancel_scheduled_update(self) -> None:
         """스케줄된 업데이트 취소."""
         if self._scheduled_update_unsub:
@@ -255,8 +265,9 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                 ),
             )
 
-        # 계정 조회 성공 → 데이터 로드 플래그 설정
+        # 계정 조회 성공 → 데이터 로드 플래그 및 타임스탬프 설정
         self._data_loaded = True
+        self._last_update_time = dt_util.now()
 
         # 2. 로또 6/45 결과 조회
         lotto_result: dict[str, Any] | None = None

@@ -215,7 +215,7 @@ class DonghangLotterySensor(CoordinatorEntity[DonghangLotteryCoordinator], Senso
     @property
     def native_value(self) -> Any:
         if self.entity_description.key == "last_update":
-            return self.coordinator.last_update_success_time
+            return self.coordinator.last_update_time
         if self.entity_description.key == "next_update":
             return self.coordinator.next_update_time
         data: DonghangLotteryData | None = self.coordinator.data
