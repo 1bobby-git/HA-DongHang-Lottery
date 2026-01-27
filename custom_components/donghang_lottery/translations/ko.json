@@ -73,8 +73,23 @@
       "lotto645_round": {
         "name": "로또6/45 회차"
       },
-      "lotto645_numbers": {
-        "name": "로또6/45 당첨번호"
+      "lotto645_number1": {
+        "name": "로또6/45 번호 1"
+      },
+      "lotto645_number2": {
+        "name": "로또6/45 번호 2"
+      },
+      "lotto645_number3": {
+        "name": "로또6/45 번호 3"
+      },
+      "lotto645_number4": {
+        "name": "로또6/45 번호 4"
+      },
+      "lotto645_number5": {
+        "name": "로또6/45 번호 5"
+      },
+      "lotto645_number6": {
+        "name": "로또6/45 번호 6"
       },
       "lotto645_bonus": {
         "name": "로또6/45 보너스"
@@ -115,8 +130,23 @@
       "pension720_group": {
         "name": "연금복권720+ 1등 조"
       },
-      "pension720_number": {
-        "name": "연금복권720+ 1등 번호"
+      "pension720_number1": {
+        "name": "연금복권720+ 1등 번호 1"
+      },
+      "pension720_number2": {
+        "name": "연금복권720+ 1등 번호 2"
+      },
+      "pension720_number3": {
+        "name": "연금복권720+ 1등 번호 3"
+      },
+      "pension720_number4": {
+        "name": "연금복권720+ 1등 번호 4"
+      },
+      "pension720_number5": {
+        "name": "연금복권720+ 1등 번호 5"
+      },
+      "pension720_number6": {
+        "name": "연금복권720+ 1등 번호 6"
       },
       "has_unclaimed_prizes": {
         "name": "미수령 당첨금"
@@ -127,8 +157,23 @@
       "pension720_bonus_group": {
         "name": "연금복권720+ 보너스 조"
       },
-      "pension720_bonus_number": {
-        "name": "연금복권720+ 보너스 번호"
+      "pension720_bonus_number1": {
+        "name": "연금복권720+ 보너스 번호 1"
+      },
+      "pension720_bonus_number2": {
+        "name": "연금복권720+ 보너스 번호 2"
+      },
+      "pension720_bonus_number3": {
+        "name": "연금복권720+ 보너스 번호 3"
+      },
+      "pension720_bonus_number4": {
+        "name": "연금복권720+ 보너스 번호 4"
+      },
+      "pension720_bonus_number5": {
+        "name": "연금복권720+ 보너스 번호 5"
+      },
+      "pension720_bonus_number6": {
+        "name": "연금복권720+ 보너스 번호 6"
       },
       "lotto_shop_name": {
         "name": "이름"
@@ -174,9 +219,6 @@
       },
       "pension_shop_phone": {
         "name": "전화번호"
-      },
-      "pension_shop_win_type": {
-        "name": "당첨방식"
       },
       "pension_shop_win_rank": {
         "name": "당첨종류"

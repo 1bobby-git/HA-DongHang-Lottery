@@ -73,8 +73,23 @@
       "lotto645_round": {
         "name": "Lotto 6/45 Round"
       },
-      "lotto645_numbers": {
-        "name": "Lotto 6/45 Numbers"
+      "lotto645_number1": {
+        "name": "Lotto 6/45 Number 1"
+      },
+      "lotto645_number2": {
+        "name": "Lotto 6/45 Number 2"
+      },
+      "lotto645_number3": {
+        "name": "Lotto 6/45 Number 3"
+      },
+      "lotto645_number4": {
+        "name": "Lotto 6/45 Number 4"
+      },
+      "lotto645_number5": {
+        "name": "Lotto 6/45 Number 5"
+      },
+      "lotto645_number6": {
+        "name": "Lotto 6/45 Number 6"
       },
       "lotto645_bonus": {
         "name": "Lotto 6/45 Bonus"
@@ -115,8 +130,23 @@
       "pension720_group": {
         "name": "Pension 720+ Group"
       },
-      "pension720_number": {
-        "name": "Pension 720+ Number"
+      "pension720_number1": {
+        "name": "Pension 720+ 1st Number 1"
+      },
+      "pension720_number2": {
+        "name": "Pension 720+ 1st Number 2"
+      },
+      "pension720_number3": {
+        "name": "Pension 720+ 1st Number 3"
+      },
+      "pension720_number4": {
+        "name": "Pension 720+ 1st Number 4"
+      },
+      "pension720_number5": {
+        "name": "Pension 720+ 1st Number 5"
+      },
+      "pension720_number6": {
+        "name": "Pension 720+ 1st Number 6"
       },
       "has_unclaimed_prizes": {
         "name": "Unclaimed Prizes"
@@ -127,8 +157,23 @@
       "pension720_bonus_group": {
         "name": "Pension 720+ Bonus Group"
       },
-      "pension720_bonus_number": {
-        "name": "Pension 720+ Bonus Number"
+      "pension720_bonus_number1": {
+        "name": "Pension 720+ Bonus Number 1"
+      },
+      "pension720_bonus_number2": {
+        "name": "Pension 720+ Bonus Number 2"
+      },
+      "pension720_bonus_number3": {
+        "name": "Pension 720+ Bonus Number 3"
+      },
+      "pension720_bonus_number4": {
+        "name": "Pension 720+ Bonus Number 4"
+      },
+      "pension720_bonus_number5": {
+        "name": "Pension 720+ Bonus Number 5"
+      },
+      "pension720_bonus_number6": {
+        "name": "Pension 720+ Bonus Number 6"
       },
       "lotto_shop_name": {
         "name": "Name"
@@ -174,9 +219,6 @@
       },
       "pension_shop_phone": {
         "name": "Phone"
-      },
-      "pension_shop_win_type": {
-        "name": "Win Type"
       },
       "pension_shop_win_rank": {
         "name": "Win Rank"

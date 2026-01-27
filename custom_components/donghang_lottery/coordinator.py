@@ -19,14 +19,18 @@ from typing import Any
 from .api import AccountSummary, DonghangLotteryClient, DonghangLotteryError
 from .const import DOMAIN
 
-# 최초 데이터 로드 타임아웃 (초) - HA setup timeout(60초)보다 짧아야 함
-# v0.7.6: 30→45초 (워밍업에 시간이 소모되어 실제 로그인에 시간 부족했음)
+# First refresh timeout (seconds) - must be shorter than HA setup timeout (60s)
 FIRST_REFRESH_TIMEOUT = 45
 
 LOGGER = logging.getLogger(__name__)
 
 
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
+    """Coordinator for managing Donghang Lottery data updates.
+
+    Handles scheduled updates after lottery draws and provides
+    data refresh functionality with error handling.
+    """
 
     def __init__(
         self,
@@ -51,10 +55,10 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self._data_source: str = "none"
 
     async def async_config_entry_first_refresh(self) -> None:
-        """최초 데이터 로드 및 스케줄 설정.
+        """Initial data load and schedule setup.
 
-        HA setup timeout(60초) 내에 완료되도록 타임아웃 적용.
-        실패 시 ConfigEntryNotReady 전파 → HA가 자동 재시도.
+        Applies timeout to complete within HA setup timeout (60 seconds).
+        On failure, raises ConfigEntryNotReady for automatic retry.
         """
         try:
             await asyncio.wait_for(
@@ -63,26 +67,24 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             )
         except asyncio.TimeoutError as err:
             raise ConfigEntryNotReady(
-                f"초기 데이터 로드 타임아웃 ({FIRST_REFRESH_TIMEOUT}초)"
+                f"Initial data load timeout ({FIRST_REFRESH_TIMEOUT}s)"
             ) from err
-        # UpdateFailed → 부모가 ConfigEntryNotReady로 자동 변환
-        # CancelledError → 그대로 전파 (HA setup timeout)
 
-        LOGGER.info("[DHLottery] 최초 데이터 로드 성공")
+        LOGGER.info("[DHLottery] Initial data load successful")
         self._data_loaded = True
         self._schedule_next_update()
 
     def _get_next_draw_time(self) -> tuple[datetime, str]:
-        """다음 당첨발표 확인 시간 계산.
+        """Calculate next draw result check time.
 
-        로또 6/45: 토요일 21:10
-        연금복권 720+: 목요일 19:30
+        Lotto 6/45: Saturday 21:10
+        Pension 720+: Thursday 19:30
 
-        Returns: (다음 시간, 타입) - 타입은 "lotto" 또는 "pension"
+        Returns: (next_time, type) - type is "lotto" or "pension"
         """
         now = dt_util.now()
 
-        # 로또 6/45: 토요일 (weekday=5) 21:10
+        # Lotto 6/45: Saturday (weekday=5) 21:10
         days_until_lotto = (5 - now.weekday()) % 7
         next_lotto = now.replace(
             hour=21, minute=10, second=0, microsecond=0,
@@ -90,7 +92,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         if next_lotto <= now:
             next_lotto += timedelta(weeks=1)
 
-        # 연금복권 720+: 목요일 (weekday=3) 19:30
+        # Pension 720+: Thursday (weekday=3) 19:30
         days_until_pension = (3 - now.weekday()) % 7
         next_pension = now.replace(
             hour=19, minute=30, second=0, microsecond=0,
@@ -103,7 +105,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         return next_pension, "pension"
 
     def _schedule_next_update(self) -> None:
-        """다음 추첨 후 업데이트 스케줄."""
+        """Schedule next update after draw."""
         if self._scheduled_update_unsub:
             self._scheduled_update_unsub()
             self._scheduled_update_unsub = None
@@ -114,15 +116,15 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         next_time, draw_type = self._get_next_draw_time()
         self._next_update_time = next_time
         LOGGER.info(
-            "다음 업데이트 예정: %s (%s)",
+            "Next update scheduled: %s (%s)",
             next_time.strftime("%Y-%m-%d %H:%M:%S"),
             draw_type,
         )
 
         @callback
         def _scheduled_refresh(_now: datetime) -> None:
-            """스케줄된 업데이트 실행."""
-            LOGGER.info("추첨 후 자동 업데이트 시작 (%s)", draw_type)
+            """Execute scheduled update."""
+            LOGGER.info("Starting auto-update after draw (%s)", draw_type)
             self.hass.async_create_task(self._async_draw_refresh(draw_type))
 
         self._scheduled_update_unsub = async_track_point_in_time(
@@ -132,9 +134,9 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         )
 
     async def _async_draw_refresh(self, draw_type: str) -> None:
-        """추첨 결과 업데이트 및 재시도 로직.
+        """Update draw results with retry logic.
 
-        결과가 아직 갱신되지 않은 경우 10분 후 재시도.
+        Retries after 10 minutes if results are not yet available.
         """
         prev_round = self._get_current_round(draw_type)
         await self.async_request_refresh()
@@ -142,19 +144,19 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
 
         if new_round is not None and new_round != prev_round:
             LOGGER.info(
-                "[DHLottery] %s 추첨 결과 업데이트 완료 (회차: %s → %s)",
+                "[DHLottery] %s draw results updated (round: %s -> %s)",
                 draw_type, prev_round, new_round,
             )
             self._schedule_next_update()
         else:
             LOGGER.info(
-                "[DHLottery] %s 추첨 결과 미확인, 10분 후 재시도",
+                "[DHLottery] %s draw results not confirmed, retrying in 10 minutes",
                 draw_type,
             )
             self._schedule_retry(draw_type)
 
     def _get_current_round(self, draw_type: str) -> int | None:
-        """현재 데이터의 회차 번호 반환."""
+        """Return current round number from data."""
         data = self.data
         if not data:
             return None
@@ -172,7 +174,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             return data.pension720_round
 
     def _schedule_retry(self, draw_type: str) -> None:
-        """10분 후 재시도 스케줄."""
+        """Schedule retry after 10 minutes."""
         if self._retry_unsub:
             self._retry_unsub()
             self._retry_unsub = None
@@ -197,33 +199,32 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
 
     @property
     def next_update_time(self) -> datetime | None:
-        """다음 업데이트 예정 시간."""
+        """Next scheduled update time."""
         return self._next_update_time
 
     @property
     def last_update_time(self) -> datetime | None:
-        """마지막 성공적 데이터 업데이트 시간."""
+        """Last successful data update time."""
         return self._last_update_time
 
     @property
     def last_error(self) -> str | None:
-        """마지막 에러 메시지."""
+        """Last error message."""
         return self._last_error
 
     @property
     def data_source(self) -> str:
-        """데이터 소스 ("none", "default", "api")."""
+        """Data source: none, default, or api."""
         return self._data_source
 
     @property
     def debug_info(self) -> dict[str, Any]:
-        """진단 정보 (센서 속성으로 노출)."""
+        """Diagnostic information exposed as sensor attributes."""
         info: dict[str, Any] = {
             "data_loaded": self._data_loaded,
             "data_source": self._data_source,
             "last_error": self._last_error,
         }
-        # 클라이언트 상태
         try:
             info["circuit_breaker"] = self.client._circuit_state
             info["consecutive_failures"] = self.client._consecutive_failures
@@ -236,7 +237,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         self, items: list[dict[str, Any]], my_lat: float, my_lon: float,
         lottery_type: str = "",
     ) -> dict[str, Any] | None:
-        """온라인 판매점 제외, 가장 가까운 물리 판매점 찾기."""
+        """Find nearest physical shop excluding online retailers."""
         best: dict[str, Any] | None = None
         best_dist = float("inf")
         for item in items:
@@ -283,88 +284,85 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             self._retry_unsub = None
 
     async def _async_update_data(self) -> "DonghangLotteryData":
-        """데이터 업데이트.
+        """Update lottery data.
 
-        v0.7.8 핵심 원칙:
-        - 최초 로드 실패 → UpdateFailed → ConfigEntryNotReady (센서 미등록)
-        - 이후 실패 → 기존 데이터 반환 (엔티티 available 유지)
-        - 부분 성공 시 성공한 데이터만 갱신, 나머지는 기존 데이터 보존
+        Error handling:
+        - Initial load failure -> raises UpdateFailed -> ConfigEntryNotReady
+        - Subsequent failures -> returns existing data (keeps entities available)
+        - Partial success -> updates successful data, preserves rest
         """
         prev_data = self.data
         errors: list[str] = []
 
-        # 1. 계정 정보 조회
+        # Fetch account summary
         try:
             account = await self.client.async_fetch_account_summary()
             LOGGER.info(
-                "[DHLottery] ✓ 계정 데이터 수신 - 잔액: %s원, 미확인: %s건, 고액미수령: %s건",
+                "[DHLottery] [OK] Account data received - balance: %sw, unconfirmed: %s, high-value unclaimed: %s",
                 account.total_amount, account.unconfirmed_count, account.unclaimed_high_value_count,
             )
         except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] ✗ 계정 정보 조회 실패: %s", err)
-            self._last_error = f"계정 조회 실패: {err}"
-            # 최초 로드 실패 → UpdateFailed → ConfigEntryNotReady
+            LOGGER.warning("[DHLottery] [FAIL] Account info query failed: %s", err)
+            self._last_error = f"Account query failed: {err}"
             if prev_data is None:
-                raise UpdateFailed(f"계정 조회 실패: {err}") from err
-            # 이후 실패 → 기존 데이터 보존 (엔티티 available 유지)
-            LOGGER.info("[DHLottery] 기존 데이터 보존 (data_source=%s)", self._data_source)
+                raise UpdateFailed(f"Account query failed: {err}") from err
+            LOGGER.info("[DHLottery] Preserving existing data (data_source=%s)", self._data_source)
             return prev_data
 
-        # 계정 조회 성공 → 데이터 로드 플래그 및 타임스탬프 설정
         self._data_loaded = True
         self._data_source = "api"
         self._last_update_time = dt_util.now()
 
-        # 2. 로또 6/45 결과 조회
+        # Fetch Lotto 6/45 results
         lotto_result: dict[str, Any] | None = None
         try:
             lotto_result = await self.client.async_get_lotto645_result()
             if lotto_result:
                 LOGGER.info(
-                    "[DHLottery] ✓ 로또 645 데이터 수신 - 키: %s",
+                    "[DHLottery] [OK] Lotto 645 data received - keys: %s",
                     list(lotto_result.keys()) if isinstance(lotto_result, dict) else type(lotto_result).__name__,
                 )
                 LOGGER.debug("[DHLottery] 로또 645 원시 데이터: %s", lotto_result)
             else:
-                LOGGER.info("[DHLottery] ✓ 로또 645 조회 성공 - 데이터 없음 (빈 응답)")
-                errors.append("로또645: 빈 응답")
+                LOGGER.info("[DHLottery] [OK] Lotto 645 query successful - no data (empty response)")
+                errors.append("Lotto645: empty response")
         except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] ✗ 로또 645 조회 실패: %s", err)
-            errors.append(f"로또645: {err}")
+            LOGGER.warning("[DHLottery] [FAIL] Lotto 645 query failed: %s", err)
+            errors.append(f"Lotto645: {err}")
             if prev_data is not None:
                 lotto_result = prev_data.lotto645_result
 
-        # 3. 연금복권 720+ 결과 조회
+        # Fetch Pension 720+ results
         pension_result: dict[str, Any] | None = None
         try:
             pension_result = await self.client.async_get_pension720_result()
             if pension_result:
                 LOGGER.info(
-                    "[DHLottery] ✓ 연금복권 720 데이터 수신 - 키: %s",
+                    "[DHLottery] [OK] Pension 720 data received - keys: %s",
                     list(pension_result.keys()) if isinstance(pension_result, dict) else type(pension_result).__name__,
                 )
                 LOGGER.debug("[DHLottery] 연금복권 720 원시 데이터: %s", pension_result)
             else:
-                LOGGER.info("[DHLottery] ✓ 연금복권 720 조회 성공 - 데이터 없음 (빈 응답)")
-                errors.append("연금720: 빈 응답")
+                LOGGER.info("[DHLottery] [OK] Pension 720 query successful - no data (empty response)")
+                errors.append("Pension720: empty response")
         except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] ✗ 연금복권 720 조회 실패: %s", err)
-            errors.append(f"연금720: {err}")
+            LOGGER.warning("[DHLottery] [FAIL] Pension 720 query failed: %s", err)
+            errors.append(f"Pension720: {err}")
             if prev_data is not None:
                 pension_result = prev_data.pension720_result
 
-        # 4. 연금복권 720+ 최신 회차 조회
+        # Fetch latest Pension 720+ round
         pension_round: int | None = None
         try:
             pension_round = await self.client.async_get_latest_pension720_round()
-            LOGGER.info("[DHLottery] ✓ 연금복권 720 회차: %s", pension_round)
+            LOGGER.info("[DHLottery] [OK] Pension 720 round: %s", pension_round)
         except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] ✗ 연금복권 720 회차 조회 실패: %s", err)
-            errors.append(f"연금720회차: {err}")
+            LOGGER.warning("[DHLottery] [FAIL] Pension 720 round query failed: %s", err)
+            errors.append(f"Pension720Round: {err}")
             if prev_data is not None:
                 pension_round = prev_data.pension720_round
 
-        # 5. 가장 가까운 당첨 판매점 조회
+        # Find nearest winning shops
         nearest_lotto_shop: dict[str, Any] | None = None
         nearest_pension_shop: dict[str, Any] | None = None
 
@@ -374,7 +372,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                 my_lat = state.attributes.get("latitude")
                 my_lon = state.attributes.get("longitude")
                 if my_lat is not None and my_lon is not None:
-                    # 로또6/45 당첨 판매점
+                    # Lotto 6/45 winning shops
                     try:
                         lotto_round_no = None
                         if lotto_result:
@@ -389,19 +387,19 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                         nearest_lotto_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon), lottery_type="lt645")
                         if nearest_lotto_shop:
                             LOGGER.info(
-                                "[DHLottery] ✓ 로또 당첨 판매점: %s (%.2fkm)",
+                                "[DHLottery] [OK] Lotto winning shop: %s (%.2fkm)",
                                 nearest_lotto_shop.get("shpNm", "?"),
                                 nearest_lotto_shop.get("distance_km", 0),
                             )
                         else:
-                            LOGGER.info("[DHLottery] 로또 당첨 판매점 없음 (물리 매장)")
+                            LOGGER.info("[DHLottery] No lotto winning shop (physical stores only)")
                     except DonghangLotteryError as err:
-                        LOGGER.warning("[DHLottery] ✗ 로또 당첨 판매점 조회 실패: %s", err)
-                        errors.append(f"로또판매점: {err}")
+                        LOGGER.warning("[DHLottery] [FAIL] Lotto winning shop query failed: %s", err)
+                        errors.append(f"LottoShop: {err}")
                         if prev_data is not None:
                             nearest_lotto_shop = prev_data.nearest_lotto_shop
 
-                    # 연금복권720+ 당첨 판매점
+                    # Pension 720+ winning shops
                     try:
                         pension_round_no = pension_round
                         if not pension_round_no:
@@ -413,30 +411,29 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                         nearest_pension_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon), lottery_type="pt720")
                         if nearest_pension_shop:
                             LOGGER.info(
-                                "[DHLottery] ✓ 연금 당첨 판매점: %s (%.2fkm)",
+                                "[DHLottery] [OK] Pension winning shop: %s (%.2fkm)",
                                 nearest_pension_shop.get("shpNm", "?"),
                                 nearest_pension_shop.get("distance_km", 0),
                             )
                         else:
-                            LOGGER.info("[DHLottery] 연금 당첨 판매점 없음 (물리 매장)")
+                            LOGGER.info("[DHLottery] No pension winning shop (physical stores only)")
                     except DonghangLotteryError as err:
-                        LOGGER.warning("[DHLottery] ✗ 연금 당첨 판매점 조회 실패: %s", err)
-                        errors.append(f"연금판매점: {err}")
+                        LOGGER.warning("[DHLottery] [FAIL] Pension winning shop query failed: %s", err)
+                        errors.append(f"PensionShop: {err}")
                         if prev_data is not None:
                             nearest_pension_shop = prev_data.nearest_pension_shop
 
-        # 에러 요약
         if errors:
             self._last_error = " | ".join(errors)
-            LOGGER.info("[DHLottery] 부분 실패: %s", self._last_error)
+            LOGGER.info("[DHLottery] Partial failure: %s", self._last_error)
         else:
             self._last_error = None
 
         LOGGER.info(
-            "[DHLottery] 데이터 업데이트 완료 - source=%s, 로또=%s, 연금=%s, 회차=%s",
+            "[DHLottery] Data update complete - source=%s, lotto=%s, pension=%s, round=%s",
             self._data_source,
-            "있음" if lotto_result else "없음",
-            "있음" if pension_result else "없음",
+            "present" if lotto_result else "absent",
+            "present" if pension_result else "absent",
             pension_round,
         )
 

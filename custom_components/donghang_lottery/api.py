@@ -434,7 +434,7 @@ class DonghangLotteryClient:
         # 새 UA로 변경
         self._rotate_user_agent()
 
-        _LOGGER.info("[DHLottery] ✓ 세션 완전 재초기화 완료")
+        _LOGGER.info("[DHLottery] [OK] Full session reset complete")
 
     def _resolve_url(self, url: str) -> str:
         """릴레이 모드 시 URL을 릴레이 URL로 변환.
@@ -493,23 +493,23 @@ class DonghangLotteryClient:
                     self._update_session_ids()
                     self._cookies_initialized = True
                     _LOGGER.info(
-                        "[DHLottery] ✓ 서버 연결 확인 (%s, HTTP 200, 크기: %s)",
+                        "[DHLottery] [OK] Server connection confirmed (%s, HTTP 200, size: %s)",
                         url, content_length,
                     )
                     return True
-                _LOGGER.warning("[DHLottery] ✗ 서버 응답 비정상: %s → HTTP %s", url, resp.status)
+                _LOGGER.warning("[DHLottery] [FAIL] Abnormal server response: %s -> HTTP %s", url, resp.status)
                 last_err = f"HTTP {resp.status}"
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError:
-                _LOGGER.warning("[DHLottery] ✗ 연결 타임아웃 (20초): %s", url)
+                _LOGGER.warning("[DHLottery] [FAIL] Connection timeout (20s): %s", url)
                 last_err = "타임아웃 (20초)"
             except OSError as err:
                 # DNS 실패, 네트워크 미연결, 연결 거부 등
-                _LOGGER.warning("[DHLottery] ✗ 네트워크 에러: %s → %s", url, err)
+                _LOGGER.warning("[DHLottery] [FAIL] Network error: %s -> %s", url, err)
                 last_err = f"네트워크: {err}"
             except Exception as err:
-                _LOGGER.warning("[DHLottery] ✗ 연결 실패: %s → %s (%s)", url, type(err).__name__, err)
+                _LOGGER.warning("[DHLottery] [FAIL] Connection failed: %s -> %s (%s)", url, type(err).__name__, err)
                 last_err = f"{type(err).__name__}: {err}"
 
         _LOGGER.error("[DHLottery] 모든 연결 시도 실패 (마지막: %s)", last_err)
@@ -1133,7 +1133,7 @@ class DonghangLotteryClient:
         self._warmup_failures = 0  # 성공 시 실패 카운터 리셋
         self._cookies_initialized = True
         self._session_warmed_up = True
-        _LOGGER.info("[DHLottery] ✓ 브라우저 세션 워밍업 완료")
+        _LOGGER.info("[DHLottery] [OK] Browser session warmup complete")
 
     def _rsa_encrypt(self, text: str, modulus: str, exponent: str) -> str:
         key_spec = RSA.construct((int(modulus, 16), int(exponent, 16)))
@@ -1496,7 +1496,7 @@ class DonghangLotteryClient:
                     # 성공적인 응답 (200 OK)
                     if resp.status == 200:
                         self._record_success()
-                        _LOGGER.debug("[DHLottery] ✓ 성공: %s (200)", url_short)
+                        _LOGGER.debug("[DHLottery] [OK] Success: %s (200)", url_short)
                         return resp
 
                     # 인증 실패 (401) - 세션 완전 재초기화
