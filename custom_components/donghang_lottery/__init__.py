@@ -504,7 +504,7 @@ async def _handle_fetch_winning_shops(call: ServiceCall) -> dict[str, Any]:
         round_no = str(await client.async_get_latest_winning_shop_round(lottery_type))
 
     shops = await client.async_get_winning_shops(lottery_type, rank, round_no, region)
-    items = shops.get("list") or shops.get("data") or shops.get("result") or []
+    items = (shops.get("data") or {}).get("list") or shops.get("list") or shops.get("result") or []
 
     location_entity = call.data.get(ATTR_LOCATION_ENTITY) or data.get("location_entity")
     max_distance = call.data.get(ATTR_MAX_DISTANCE)
@@ -749,6 +749,8 @@ def _filter_by_distance(
 ) -> list[dict[str, Any]]:
     results = []
     for item in items:
+        if not isinstance(item, dict):
+            continue
         try:
             shop_lat = float(item.get("shpLat"))
             shop_lon = float(item.get("shpLot"))

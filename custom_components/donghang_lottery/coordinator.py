@@ -272,6 +272,8 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         best: dict[str, Any] | None = None
         best_dist = float("inf")
         for item in items:
+            if not isinstance(item, dict):
+                continue
             try:
                 shop_lat = float(item.get("shpLat", 0))
                 shop_lon = float(item.get("shpLot", 0))
@@ -409,7 +411,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                         shops_data = await self.client.async_get_winning_shops(
                             "lt645", "1", str(lotto_round_no),
                         )
-                        items = shops_data.get("list") or shops_data.get("data") or shops_data.get("result") or []
+                        items = (shops_data.get("data") or {}).get("list") or shops_data.get("list") or shops_data.get("result") or []
                         nearest_lotto_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon))
                         if nearest_lotto_shop:
                             LOGGER.info(
@@ -433,7 +435,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                         shops_data = await self.client.async_get_winning_shops(
                             "pt720", "1", str(pension_round_no),
                         )
-                        items = shops_data.get("list") or shops_data.get("data") or shops_data.get("result") or []
+                        items = (shops_data.get("data") or {}).get("list") or shops_data.get("list") or shops_data.get("result") or []
                         nearest_pension_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon))
                         if nearest_pension_shop:
                             LOGGER.info(
