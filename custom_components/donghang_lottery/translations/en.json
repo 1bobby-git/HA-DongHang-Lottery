@@ -8,13 +8,9 @@
           "username": "Username",
           "password": "Password",
           "location_entity": "Location entity",
-          "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
-          "pension_update_hour": "Pension 720+ result check hour (0~23)",
           "use_relay": "IP Block Bypass (Relay Server)"
         },
         "data_description": {
-          "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
-          "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
           "use_relay": "If your IP is blocked by dhlottery.co.kr, route requests through a Cloudflare Worker relay."
         }
       },
@@ -34,18 +30,14 @@
     "step": {
       "init": {
         "title": "Donghang Lottery Options",
-        "description": "Configure draw result check times and connection settings.",
+        "description": "Configure connection settings.",
         "data": {
           "username": "Username",
           "password": "Password",
           "location_entity": "Location entity",
-          "lotto_update_hour": "Lotto 6/45 result check hour (0~23)",
-          "pension_update_hour": "Pension 720+ result check hour (0~23)",
           "use_relay": "IP Block Bypass (Relay Server)"
         },
         "data_description": {
-          "lotto_update_hour": "Hour to check Saturday draw results (0=midnight, default: 0)",
-          "pension_update_hour": "Hour to check Thursday draw results (0=midnight, default: 0)",
           "use_relay": "If your IP is blocked by dhlottery.co.kr, route requests through a Cloudflare Worker relay."
         }
       },
@@ -125,6 +117,84 @@
       },
       "pension720_number": {
         "name": "Pension 720+ Number"
+      },
+      "has_unclaimed_prizes": {
+        "name": "Unclaimed Prizes"
+      },
+      "has_unconfirmed_games": {
+        "name": "Unconfirmed Games"
+      },
+      "pension720_bonus_group": {
+        "name": "Pension 720+ Bonus Group"
+      },
+      "pension720_bonus_number": {
+        "name": "Pension 720+ Bonus Number"
+      },
+      "lotto_shop_name": {
+        "name": "Lotto 6/45 Winning Shop"
+      },
+      "lotto_shop_address": {
+        "name": "Lotto 6/45 Winning Shop Address"
+      },
+      "lotto_shop_phone": {
+        "name": "Lotto 6/45 Winning Shop Phone"
+      },
+      "lotto_shop_distance": {
+        "name": "Lotto 6/45 Winning Shop Distance"
+      },
+      "lotto_shop_win_rank": {
+        "name": "Lotto 6/45 Win Rank"
+      },
+      "lotto_shop_win_type": {
+        "name": "Lotto 6/45 Win Type"
+      },
+      "lotto_shop_sells_lotto645": {
+        "name": "Lotto 6/45 Shop Sells Lotto 6/45"
+      },
+      "lotto_shop_sells_pension720": {
+        "name": "Lotto 6/45 Shop Sells Pension 720+"
+      },
+      "lotto_shop_sells_speetto500": {
+        "name": "Lotto 6/45 Shop Sells Speetto 500"
+      },
+      "lotto_shop_sells_speetto1000": {
+        "name": "Lotto 6/45 Shop Sells Speetto 1000"
+      },
+      "lotto_shop_sells_speetto2000": {
+        "name": "Lotto 6/45 Shop Sells Speetto 2000"
+      },
+      "pension_shop_name": {
+        "name": "Pension 720+ Winning Shop"
+      },
+      "pension_shop_address": {
+        "name": "Pension 720+ Winning Shop Address"
+      },
+      "pension_shop_phone": {
+        "name": "Pension 720+ Winning Shop Phone"
+      },
+      "pension_shop_distance": {
+        "name": "Pension 720+ Winning Shop Distance"
+      },
+      "pension_shop_win_rank": {
+        "name": "Pension 720+ Win Rank"
+      },
+      "pension_shop_win_type": {
+        "name": "Pension 720+ Win Type"
+      },
+      "pension_shop_sells_lotto645": {
+        "name": "Pension 720+ Shop Sells Lotto 6/45"
+      },
+      "pension_shop_sells_pension720": {
+        "name": "Pension 720+ Shop Sells Pension 720+"
+      },
+      "pension_shop_sells_speetto500": {
+        "name": "Pension 720+ Shop Sells Speetto 500"
+      },
+      "pension_shop_sells_speetto1000": {
+        "name": "Pension 720+ Shop Sells Speetto 1000"
+      },
+      "pension_shop_sells_speetto2000": {
+        "name": "Pension 720+ Shop Sells Speetto 2000"
       }
     },
     "button": {
@@ -133,12 +203,6 @@
       }
     },
     "binary_sensor": {
-      "has_unclaimed_prizes": {
-        "name": "Has Unclaimed Prizes"
-      },
-      "has_unconfirmed_games": {
-        "name": "Has Unconfirmed Games"
-      },
       "has_balance": {
         "name": "Has Balance"
       },

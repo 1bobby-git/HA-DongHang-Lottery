@@ -10,12 +10,8 @@ from homeassistant.core import callback
 
 from .const import (
     CONF_LOCATION_ENTITY,
-    CONF_LOTTO_UPDATE_HOUR,
-    CONF_PENSION_UPDATE_HOUR,
     CONF_RELAY_URL,
     CONF_USE_RELAY,
-    DEFAULT_LOTTO_UPDATE_HOUR,
-    DEFAULT_PENSION_UPDATE_HOUR,
     DEFAULT_RELAY_URL,
     DOMAIN,
 )
@@ -48,12 +44,6 @@ class DonghangLotteryConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
                 vol.Optional(CONF_LOCATION_ENTITY, default=""): str,
-                vol.Optional(
-                    CONF_LOTTO_UPDATE_HOUR, default=DEFAULT_LOTTO_UPDATE_HOUR
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
-                vol.Optional(
-                    CONF_PENSION_UPDATE_HOUR, default=DEFAULT_PENSION_UPDATE_HOUR
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
                 vol.Optional(CONF_USE_RELAY, default=False): bool,
             }
         )
@@ -121,20 +111,6 @@ class DonghangLotteryOptionsFlowHandler(config_entries.OptionsFlow):
                         self._entry.data.get(CONF_LOCATION_ENTITY, ""),
                     ),
                 ): str,
-                vol.Optional(
-                    CONF_LOTTO_UPDATE_HOUR,
-                    default=self._entry.options.get(
-                        CONF_LOTTO_UPDATE_HOUR,
-                        self._entry.data.get(CONF_LOTTO_UPDATE_HOUR, DEFAULT_LOTTO_UPDATE_HOUR),
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
-                vol.Optional(
-                    CONF_PENSION_UPDATE_HOUR,
-                    default=self._entry.options.get(
-                        CONF_PENSION_UPDATE_HOUR,
-                        self._entry.data.get(CONF_PENSION_UPDATE_HOUR, DEFAULT_PENSION_UPDATE_HOUR),
-                    ),
-                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=23)),
                 vol.Optional(
                     CONF_USE_RELAY,
                     default=bool(current_relay),

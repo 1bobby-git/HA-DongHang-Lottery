@@ -48,11 +48,7 @@ from .const import (
     ATTR_USE_MY_NUMBERS,
     ATTR_WIN_RESULT,
     CONF_LOCATION_ENTITY,
-    CONF_LOTTO_UPDATE_HOUR,
-    CONF_PENSION_UPDATE_HOUR,
     CONF_RELAY_URL,
-    DEFAULT_LOTTO_UPDATE_HOUR,
-    DEFAULT_PENSION_UPDATE_HOUR,
     DEFAULT_RELAY_URL,
     DOMAIN,
     LOTTERY_LOTTO645,
@@ -95,16 +91,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     relay_url = entry.options.get(
         CONF_RELAY_URL,
         entry.data.get(CONF_RELAY_URL, DEFAULT_RELAY_URL),
-    )
-
-    # 당첨발표 업데이트 시간 설정
-    lotto_update_hour = entry.options.get(
-        CONF_LOTTO_UPDATE_HOUR,
-        entry.data.get(CONF_LOTTO_UPDATE_HOUR, DEFAULT_LOTTO_UPDATE_HOUR),
-    )
-    pension_update_hour = entry.options.get(
-        CONF_PENSION_UPDATE_HOUR,
-        entry.data.get(CONF_PENSION_UPDATE_HOUR, DEFAULT_PENSION_UPDATE_HOUR),
     )
 
     # 커스텀 aiohttp 세션
@@ -158,11 +144,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password,
         relay_url=relay_url,
     )
-    coordinator = DonghangLotteryCoordinator(
-        hass, client,
-        lotto_update_hour=lotto_update_hour,
-        pension_update_hour=pension_update_hour,
+    location_entity = entry.options.get(
+        CONF_LOCATION_ENTITY, entry.data.get(CONF_LOCATION_ENTITY, "")
     )
+    coordinator = DonghangLotteryCoordinator(hass, client, location_entity=location_entity)
 
     # 최초 데이터 로드 - 실패 시 ConfigEntryNotReady 전파 (센서 미등록)
     try:

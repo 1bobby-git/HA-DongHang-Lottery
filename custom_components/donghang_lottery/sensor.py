@@ -52,6 +52,20 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
         device_group="account",
     ),
     DonghangLotterySensorDescription(
+        key="has_unclaimed_prizes",
+        translation_key="has_unclaimed_prizes",
+        icon="mdi:cash-multiple",
+        value_fn=lambda data: "있음" if data.account.unclaimed_high_value_count > 0 else "없음",
+        device_group="account",
+    ),
+    DonghangLotterySensorDescription(
+        key="has_unconfirmed_games",
+        translation_key="has_unconfirmed_games",
+        icon="mdi:help-circle-outline",
+        value_fn=lambda data: "있음" if data.account.unconfirmed_count > 0 else "없음",
+        device_group="account",
+    ),
+    DonghangLotterySensorDescription(
         key="last_update",
         translation_key="last_update",
         icon="mdi:clock-check-outline",
@@ -108,28 +122,28 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
         key="lotto645_first_winners",
         translation_key="lotto645_first_winners",
         icon="mdi:account-star",
-        value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rnk1WnNope")),
+        value_fn=lambda data: _format_with_commas(_get_lotto645_item(data).get("rnk1WnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_second_winners",
         translation_key="lotto645_second_winners",
         icon="mdi:account-star-outline",
-        value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rnk2WnNope")),
+        value_fn=lambda data: _format_with_commas(_get_lotto645_item(data).get("rnk2WnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_third_winners",
         translation_key="lotto645_third_winners",
         icon="mdi:account-outline",
-        value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("rnk3WnNope")),
+        value_fn=lambda data: _format_with_commas(_get_lotto645_item(data).get("rnk3WnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
         key="lotto645_total_winners",
         translation_key="lotto645_total_winners",
         icon="mdi:account-group",
-        value_fn=lambda data: _safe_int(_get_lotto645_item(data).get("sumWnNope")),
+        value_fn=lambda data: _format_with_commas(_get_lotto645_item(data).get("sumWnNope")),
         device_group="lotto",
     ),
     DonghangLotterySensorDescription(
@@ -188,8 +202,180 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
         key="pension720_number",
         translation_key="pension720_number",
         icon="mdi:ticket-confirmation",
-        value_fn=lambda data: _first_present(_get_pension720_item(data), ["wnRnkVl", "wnNo", "wnNumber", "wnNum"]),
+        value_fn=lambda data: _format_pension_number(_first_present(_get_pension720_item(data), ["wnRnkVl", "wnNo", "wnNumber", "wnNum"])),
         device_group="pension",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension720_bonus_group",
+        translation_key="pension720_bonus_group",
+        icon="mdi:label-outline",
+        value_fn=lambda data: _first_present(_get_pension720_bonus_item(data), ["wnBndNo", "wnRnk", "wnGroup"]),
+        device_group="pension",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension720_bonus_number",
+        translation_key="pension720_bonus_number",
+        icon="mdi:ticket-outline",
+        value_fn=lambda data: _format_pension_number(_first_present(_get_pension720_bonus_item(data), ["wnRnkVl", "wnNo", "wnNumber", "wnNum"])),
+        device_group="pension",
+    ),
+    # === 로또6/45 당첨 판매점 (내 주변) ===
+    DonghangLotterySensorDescription(
+        key="lotto_shop_name",
+        translation_key="lotto_shop_name",
+        icon="mdi:store",
+        value_fn=lambda data: _get_lotto_shop(data).get("shpNm"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_address",
+        translation_key="lotto_shop_address",
+        icon="mdi:map-marker",
+        value_fn=lambda data: _get_lotto_shop(data).get("shpAddr"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_phone",
+        translation_key="lotto_shop_phone",
+        icon="mdi:phone",
+        value_fn=lambda data: _format_phone(_get_lotto_shop(data).get("shpTelno")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_distance",
+        translation_key="lotto_shop_distance",
+        icon="mdi:map-marker-distance",
+        native_unit_of_measurement="km",
+        value_fn=lambda data: _get_lotto_shop(data).get("distance_km"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_win_rank",
+        translation_key="lotto_shop_win_rank",
+        icon="mdi:trophy",
+        value_fn=lambda data: _format_win_rank(_get_lotto_shop(data).get("wnShpRnk")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_win_type",
+        translation_key="lotto_shop_win_type",
+        icon="mdi:ticket-confirmation",
+        value_fn=lambda data: _get_lotto_shop(data).get("atmtPsvYnTxt"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_sells_lotto645",
+        translation_key="lotto_shop_sells_lotto645",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_lotto_shop(data).get("l645LtNtslYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_sells_pension720",
+        translation_key="lotto_shop_sells_pension720",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_lotto_shop(data).get("cpexUsePsbltyYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_sells_speetto500",
+        translation_key="lotto_shop_sells_speetto500",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_lotto_shop(data).get("st5LtNtslYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_sells_speetto1000",
+        translation_key="lotto_shop_sells_speetto1000",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_lotto_shop(data).get("st10LtNtslYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="lotto_shop_sells_speetto2000",
+        translation_key="lotto_shop_sells_speetto2000",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_lotto_shop(data).get("st20LtNtslYn")),
+        device_group="shop",
+    ),
+    # === 연금복권720+ 당첨 판매점 (내 주변) ===
+    DonghangLotterySensorDescription(
+        key="pension_shop_name",
+        translation_key="pension_shop_name",
+        icon="mdi:store",
+        value_fn=lambda data: _get_pension_shop(data).get("shpNm"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_address",
+        translation_key="pension_shop_address",
+        icon="mdi:map-marker",
+        value_fn=lambda data: _get_pension_shop(data).get("shpAddr"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_phone",
+        translation_key="pension_shop_phone",
+        icon="mdi:phone",
+        value_fn=lambda data: _format_phone(_get_pension_shop(data).get("shpTelno")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_distance",
+        translation_key="pension_shop_distance",
+        icon="mdi:map-marker-distance",
+        native_unit_of_measurement="km",
+        value_fn=lambda data: _get_pension_shop(data).get("distance_km"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_win_rank",
+        translation_key="pension_shop_win_rank",
+        icon="mdi:trophy",
+        value_fn=lambda data: _format_win_rank(_get_pension_shop(data).get("wnShpRnk")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_win_type",
+        translation_key="pension_shop_win_type",
+        icon="mdi:ticket-confirmation",
+        value_fn=lambda data: _get_pension_shop(data).get("atmtPsvYnTxt"),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_sells_lotto645",
+        translation_key="pension_shop_sells_lotto645",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_pension_shop(data).get("l645LtNtslYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_sells_pension720",
+        translation_key="pension_shop_sells_pension720",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_pension_shop(data).get("cpexUsePsbltyYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_sells_speetto500",
+        translation_key="pension_shop_sells_speetto500",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_pension_shop(data).get("st5LtNtslYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_sells_speetto1000",
+        translation_key="pension_shop_sells_speetto1000",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_pension_shop(data).get("st10LtNtslYn")),
+        device_group="shop",
+    ),
+    DonghangLotterySensorDescription(
+        key="pension_shop_sells_speetto2000",
+        translation_key="pension_shop_sells_speetto2000",
+        icon="mdi:ticket",
+        value_fn=lambda data: _format_yn(_get_pension_shop(data).get("st20LtNtslYn")),
+        device_group="shop",
     ),
 )
 
@@ -323,6 +509,23 @@ def _get_pension720_item(data: DonghangLotteryData) -> dict[str, Any]:
     return {}
 
 
+def _get_pension720_bonus_item(data: DonghangLotteryData) -> dict[str, Any]:
+    """연금복권720+ 보너스 당첨 항목 (wnSqNo == 21)."""
+    result = data.pension720_result or {}
+    inner = result.get("data") or result
+    if isinstance(inner, dict):
+        items = inner.get("result") or inner.get("list")
+        if isinstance(items, list):
+            for item in items:
+                if item.get("wnSqNo") == 21:
+                    return item
+    if isinstance(inner, list):
+        for item in inner:
+            if isinstance(item, dict) and item.get("wnSqNo") == 21:
+                return item
+    return {}
+
+
 def _parse_yyyymmdd(value: Any) -> date | None:
     if value is None:
         return None
@@ -357,8 +560,86 @@ def _safe_int(value: Any) -> int | None:
         return None
 
 
+def _format_with_commas(value: Any) -> str | None:
+    """천 단위 콤마 포맷."""
+    n = _safe_int(value)
+    if n is None:
+        return None
+    return f"{n:,}"
+
+
+def _format_pension_number(value: Any) -> str | None:
+    """연금복권 번호 포맷: '282945' → '2, 8, 2, 9, 4, 5'."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return ", ".join(text)
+
+
 def _first_present(item: dict[str, Any], keys: list[str]) -> Any:
     for key in keys:
         if key in item and item[key] not in (None, ""):
             return item[key]
     return None
+
+
+def _get_lotto_shop(data: DonghangLotteryData) -> dict[str, Any]:
+    """로또6/45 가장 가까운 당첨 판매점 데이터."""
+    return data.nearest_lotto_shop or {}
+
+
+def _get_pension_shop(data: DonghangLotteryData) -> dict[str, Any]:
+    """연금복권720+ 가장 가까운 당첨 판매점 데이터."""
+    return data.nearest_pension_shop or {}
+
+
+def _format_phone(value: Any) -> str | None:
+    """전화번호 포맷: '0212345678' → '02-1234-5678'."""
+    if value is None:
+        return None
+    phone = str(value).strip()
+    if not phone:
+        return None
+    if "-" in phone:
+        return phone
+    digits = "".join(c for c in phone if c.isdigit())
+    if not digits:
+        return None
+    # 서울 (02)
+    if digits.startswith("02"):
+        if len(digits) == 10:
+            return f"{digits[:2]}-{digits[2:6]}-{digits[6:]}"
+        elif len(digits) == 9:
+            return f"{digits[:2]}-{digits[2:5]}-{digits[5:]}"
+    # 기타 지역 (0XX)
+    elif digits.startswith("0"):
+        if len(digits) == 11:
+            return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
+        elif len(digits) == 10:
+            return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return phone
+
+
+def _format_win_rank(value: Any) -> str | None:
+    """당첨 등수 포맷: 1 → '1등', 2 → '2등'."""
+    if value is None:
+        return None
+    try:
+        rank = int(value)
+        return f"{rank}등"
+    except (ValueError, TypeError):
+        return str(value)
+
+
+def _format_yn(value: Any) -> str | None:
+    """Y/N → 있음/없음 변환."""
+    if value is None:
+        return None
+    v = str(value).strip().upper()
+    if v == "Y":
+        return "있음"
+    elif v == "N":
+        return "없음"
+    return str(value)

@@ -8,13 +8,9 @@
           "username": "아이디",
           "password": "비밀번호",
           "location_entity": "위치 엔티티",
-          "lotto_update_hour": "로또 6/45 발표 확인 시간 (시, 0~23)",
-          "pension_update_hour": "연금복권 720+ 발표 확인 시간 (시, 0~23)",
           "use_relay": "IP 차단 우회 (릴레이 서버 사용)"
         },
         "data_description": {
-          "lotto_update_hour": "토요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
-          "pension_update_hour": "목요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
           "use_relay": "동행복권 서버로부터 IP가 차단된 경우, Cloudflare Worker 릴레이를 통해 우회합니다."
         }
       },
@@ -34,18 +30,14 @@
     "step": {
       "init": {
         "title": "동행복권 옵션",
-        "description": "당첨발표 확인 시간과 연결 설정을 조정할 수 있습니다.",
+        "description": "연결 설정을 조정할 수 있습니다.",
         "data": {
           "username": "아이디",
           "password": "비밀번호",
           "location_entity": "위치 엔티티",
-          "lotto_update_hour": "로또 6/45 발표 확인 시간 (시, 0~23)",
-          "pension_update_hour": "연금복권 720+ 발표 확인 시간 (시, 0~23)",
           "use_relay": "IP 차단 우회 (릴레이 서버 사용)"
         },
         "data_description": {
-          "lotto_update_hour": "토요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
-          "pension_update_hour": "목요일 추첨 후 당첨 결과를 확인할 시간 (0=자정, 기본값: 0)",
           "use_relay": "동행복권 서버로부터 IP가 차단된 경우, Cloudflare Worker 릴레이를 통해 우회합니다."
         }
       },
@@ -125,6 +117,84 @@
       },
       "pension720_number": {
         "name": "연금복권720+ 1등 번호"
+      },
+      "has_unclaimed_prizes": {
+        "name": "미수령 당첨금"
+      },
+      "has_unconfirmed_games": {
+        "name": "미확인 게임"
+      },
+      "pension720_bonus_group": {
+        "name": "연금복권720+ 보너스 조"
+      },
+      "pension720_bonus_number": {
+        "name": "연금복권720+ 보너스 번호"
+      },
+      "lotto_shop_name": {
+        "name": "로또6/45 당첨 판매점"
+      },
+      "lotto_shop_address": {
+        "name": "로또6/45 당첨 판매점 주소"
+      },
+      "lotto_shop_phone": {
+        "name": "로또6/45 당첨 판매점 전화번호"
+      },
+      "lotto_shop_distance": {
+        "name": "로또6/45 당첨 판매점 거리"
+      },
+      "lotto_shop_win_rank": {
+        "name": "로또6/45 당첨 종류"
+      },
+      "lotto_shop_win_type": {
+        "name": "로또6/45 당첨 방식"
+      },
+      "lotto_shop_sells_lotto645": {
+        "name": "로또6/45 판매점 로또6/45 판매"
+      },
+      "lotto_shop_sells_pension720": {
+        "name": "로또6/45 판매점 연금복권720+ 판매"
+      },
+      "lotto_shop_sells_speetto500": {
+        "name": "로또6/45 판매점 스피또500 판매"
+      },
+      "lotto_shop_sells_speetto1000": {
+        "name": "로또6/45 판매점 스피또1000 판매"
+      },
+      "lotto_shop_sells_speetto2000": {
+        "name": "로또6/45 판매점 스피또2000 판매"
+      },
+      "pension_shop_name": {
+        "name": "연금복권720+ 당첨 판매점"
+      },
+      "pension_shop_address": {
+        "name": "연금복권720+ 당첨 판매점 주소"
+      },
+      "pension_shop_phone": {
+        "name": "연금복권720+ 당첨 판매점 전화번호"
+      },
+      "pension_shop_distance": {
+        "name": "연금복권720+ 당첨 판매점 거리"
+      },
+      "pension_shop_win_rank": {
+        "name": "연금복권720+ 당첨 종류"
+      },
+      "pension_shop_win_type": {
+        "name": "연금복권720+ 당첨 방식"
+      },
+      "pension_shop_sells_lotto645": {
+        "name": "연금복권720+ 판매점 로또6/45 판매"
+      },
+      "pension_shop_sells_pension720": {
+        "name": "연금복권720+ 판매점 연금복권720+ 판매"
+      },
+      "pension_shop_sells_speetto500": {
+        "name": "연금복권720+ 판매점 스피또500 판매"
+      },
+      "pension_shop_sells_speetto1000": {
+        "name": "연금복권720+ 판매점 스피또1000 판매"
+      },
+      "pension_shop_sells_speetto2000": {
+        "name": "연금복권720+ 판매점 스피또2000 판매"
       }
     },
     "button": {
@@ -133,12 +203,6 @@
       }
     },
     "binary_sensor": {
-      "has_unclaimed_prizes": {
-        "name": "미수령 당첨금 있음"
-      },
-      "has_unconfirmed_games": {
-        "name": "미확인 게임 있음"
-      },
       "has_balance": {
         "name": "예치금 있음"
       },

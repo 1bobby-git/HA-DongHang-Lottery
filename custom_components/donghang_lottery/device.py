@@ -21,11 +21,17 @@ def device_name_pension() -> str:
     return "연금복권720+"
 
 
+def device_name_shop() -> str:
+    return "내 주변 판매점"
+
+
 def device_info_for_group(entry_id: str, username: str, group: str) -> DeviceInfo:
     if group == "lotto":
         name = device_name_lotto()
     elif group == "pension":
         name = device_name_pension()
+    elif group == "shop":
+        name = device_name_shop()
     else:
         name = device_name_account(username)
 

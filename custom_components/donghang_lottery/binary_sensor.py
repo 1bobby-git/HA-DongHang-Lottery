@@ -27,21 +27,6 @@ class DonghangLotteryBinarySensorDescription(BinarySensorEntityDescription):
 
 BINARY_SENSORS: tuple[DonghangLotteryBinarySensorDescription, ...] = (
     DonghangLotteryBinarySensorDescription(
-        key="has_unclaimed_prizes",
-        translation_key="has_unclaimed_prizes",
-        icon="mdi:cash-multiple",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-        is_on_fn=lambda data: data.account.unclaimed_high_value_count > 0,
-        device_group="account",
-    ),
-    DonghangLotteryBinarySensorDescription(
-        key="has_unconfirmed_games",
-        translation_key="has_unconfirmed_games",
-        icon="mdi:help-circle-outline",
-        is_on_fn=lambda data: data.account.unconfirmed_count > 0,
-        device_group="account",
-    ),
-    DonghangLotteryBinarySensorDescription(
         key="has_balance",
         translation_key="has_balance",
         icon="mdi:wallet-outline",
