@@ -131,70 +131,70 @@
         "name": "연금복권720+ 보너스 번호"
       },
       "lotto_shop_name": {
-        "name": "로또6/45 당첨 판매점"
+        "name": "이름"
       },
       "lotto_shop_address": {
-        "name": "로또6/45 당첨 판매점 주소"
-      },
-      "lotto_shop_phone": {
-        "name": "로또6/45 당첨 판매점 전화번호"
+        "name": "주소"
       },
       "lotto_shop_distance": {
-        "name": "로또6/45 당첨 판매점 거리"
+        "name": "거리"
       },
-      "lotto_shop_win_rank": {
-        "name": "로또6/45 당첨 종류"
+      "lotto_shop_phone": {
+        "name": "전화번호"
       },
       "lotto_shop_win_type": {
-        "name": "로또6/45 당첨 방식"
+        "name": "당첨방식"
+      },
+      "lotto_shop_win_rank": {
+        "name": "당첨종류"
       },
       "lotto_shop_sells_lotto645": {
-        "name": "로또6/45 판매점 로또6/45 판매"
+        "name": "로또6/45"
       },
       "lotto_shop_sells_pension720": {
-        "name": "로또6/45 판매점 연금복권720+ 판매"
+        "name": "연금복권720+"
       },
       "lotto_shop_sells_speetto500": {
-        "name": "로또6/45 판매점 스피또500 판매"
+        "name": "스피또500"
       },
       "lotto_shop_sells_speetto1000": {
-        "name": "로또6/45 판매점 스피또1000 판매"
+        "name": "스피또1000"
       },
       "lotto_shop_sells_speetto2000": {
-        "name": "로또6/45 판매점 스피또2000 판매"
+        "name": "스피또2000"
       },
       "pension_shop_name": {
-        "name": "연금복권720+ 당첨 판매점"
+        "name": "이름"
       },
       "pension_shop_address": {
-        "name": "연금복권720+ 당첨 판매점 주소"
-      },
-      "pension_shop_phone": {
-        "name": "연금복권720+ 당첨 판매점 전화번호"
+        "name": "주소"
       },
       "pension_shop_distance": {
-        "name": "연금복권720+ 당첨 판매점 거리"
+        "name": "거리"
       },
-      "pension_shop_win_rank": {
-        "name": "연금복권720+ 당첨 종류"
+      "pension_shop_phone": {
+        "name": "전화번호"
       },
       "pension_shop_win_type": {
-        "name": "연금복권720+ 당첨 방식"
+        "name": "당첨방식"
+      },
+      "pension_shop_win_rank": {
+        "name": "당첨종류"
       },
       "pension_shop_sells_lotto645": {
-        "name": "연금복권720+ 판매점 로또6/45 판매"
+        "name": "로또6/45"
       },
       "pension_shop_sells_pension720": {
-        "name": "연금복권720+ 판매점 연금복권720+ 판매"
+        "name": "연금복권720+"
       },
       "pension_shop_sells_speetto500": {
-        "name": "연금복권720+ 판매점 스피또500 판매"
+        "name": "스피또500"
       },
       "pension_shop_sells_speetto1000": {
-        "name": "연금복권720+ 판매점 스피또1000 판매"
+        "name": "스피또1000"
       },
       "pension_shop_sells_speetto2000": {
-        "name": "연금복권720+ 판매점 스피또2000 판매"
+        "name": "스피또2000"
       }
     },
     "button": {

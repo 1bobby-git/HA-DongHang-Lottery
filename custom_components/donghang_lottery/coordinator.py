@@ -27,39 +27,6 @@ LOGGER = logging.getLogger(__name__)
 
 
 class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
-    """동행복권 데이터 코디네이터.
-
-    v0.7.8 - 연결 실패 시 명확한 실패 처리:
-    - 최초 로드 실패 시 UpdateFailed → ConfigEntryNotReady (센서 미등록)
-    - _set_default_data / 백그라운드 재시도 제거 (HA 자동 재시도 활용)
-    - 이후 업데이트 실패 시 기존 데이터 보존 (현행 유지)
-
-    v0.7.7 - 센서 데이터 파싱 버그 수정 (테스트 결과 기반):
-    - 로또645: api.py가 변환한 키 대신 원본 API 키(_raw) 사용하도록 수정
-    - 연금복권720: 중첩 구조 {data: {result: [...]}} 올바르게 탐색하도록 수정
-    - 연금복권720: 실제 API 키 폴백 추가 (wnAmt, wnTotalCnt, wnBndNo)
-
-    v0.7.6 - 진단 속성 모든 센서 확장 + 타임아웃 예산 최적화:
-    - 모든 센서에 data_source/data_loaded/last_error 속성 추가
-    - 워밍업 타임아웃 10초→5초 (총 예산 24초→12초)
-    - 첫 로드 타임아웃 30초→45초 (실제 로그인 시간 확보)
-
-    v0.7.5 - 진단 기능 강화:
-    - 모든 API 호출 결과를 INFO 로그에 기록
-    - "최근 업데이트" 센서에 전체 원시 데이터 속성 노출
-    - data_source / last_error / circuit_breaker 상태 추적
-    - 부분 실패 시 에러 요약 기록
-
-    v0.7.4 - last_update_success_time 호환성 수정:
-    - HA 버전별 last_update_success_time 미지원 문제 해결
-    - 자체 last_update_time 프로퍼티로 마지막 업데이트 시간 관리
-
-    v0.7.3 - 무중단 데이터 보존:
-    - 업데이트 실패 시 기존 데이터 보존 (UpdateFailed 미발생)
-    - 엔티티가 항상 available 상태 유지
-    - 점진적 백그라운드 재시도 (5분 → 10분 → 20분 → 30분)
-    - 추첨 시간 기반 스마트 업데이트
-    """
 
     def __init__(
         self,
@@ -266,7 +233,8 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         return info
 
     def _find_nearest_physical_shop(
-        self, items: list[dict[str, Any]], my_lat: float, my_lon: float
+        self, items: list[dict[str, Any]], my_lat: float, my_lon: float,
+        lottery_type: str = "",
     ) -> dict[str, Any] | None:
         """온라인 판매점 제외, 가장 가까운 물리 판매점 찾기."""
         best: dict[str, Any] | None = None
@@ -279,9 +247,15 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                 shop_lon = float(item.get("shpLot", 0))
             except (TypeError, ValueError):
                 continue
-            # 온라인 판매점 제외 (좌표가 0인 경우)
-            if shop_lat == 0 and shop_lon == 0:
-                continue
+            # 온라인 판매점 제외
+            if lottery_type == "lt645":
+                # 로또: ltShpId가 "51100000"이면 온라인 판매점
+                if str(item.get("ltShpId", "")) == "51100000":
+                    continue
+            else:
+                # 연금복권: 좌표가 0이면 온라인 판매점
+                if shop_lat == 0 and shop_lon == 0:
+                    continue
             dist = self._haversine_km(my_lat, my_lon, shop_lat, shop_lon)
             if dist < best_dist:
                 best_dist = dist
@@ -412,7 +386,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                             "lt645", "1", str(lotto_round_no),
                         )
                         items = (shops_data.get("data") or {}).get("list") or shops_data.get("list") or shops_data.get("result") or []
-                        nearest_lotto_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon))
+                        nearest_lotto_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon), lottery_type="lt645")
                         if nearest_lotto_shop:
                             LOGGER.info(
                                 "[DHLottery] ✓ 로또 당첨 판매점: %s (%.2fkm)",
@@ -436,7 +410,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                             "pt720", "1", str(pension_round_no),
                         )
                         items = (shops_data.get("data") or {}).get("list") or shops_data.get("list") or shops_data.get("result") or []
-                        nearest_pension_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon))
+                        nearest_pension_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon), lottery_type="pt720")
                         if nearest_pension_shop:
                             LOGGER.info(
                                 "[DHLottery] ✓ 연금 당첨 판매점: %s (%.2fkm)",

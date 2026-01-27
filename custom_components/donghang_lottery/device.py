@@ -21,8 +21,12 @@ def device_name_pension() -> str:
     return "연금복권720+"
 
 
-def device_name_shop() -> str:
-    return "내 주변 판매점"
+def device_name_lotto_shop() -> str:
+    return "내 주변 로또 당첨 판매점"
+
+
+def device_name_pension_shop() -> str:
+    return "내 주변 연금복권 당첨 판매점"
 
 
 def device_info_for_group(entry_id: str, username: str, group: str) -> DeviceInfo:
@@ -30,8 +34,10 @@ def device_info_for_group(entry_id: str, username: str, group: str) -> DeviceInf
         name = device_name_lotto()
     elif group == "pension":
         name = device_name_pension()
-    elif group == "shop":
-        name = device_name_shop()
+    elif group == "lotto_shop":
+        name = device_name_lotto_shop()
+    elif group == "pension_shop":
+        name = device_name_pension_shop()
     else:
         name = device_name_account(username)
 

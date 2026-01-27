@@ -131,70 +131,70 @@
         "name": "Pension 720+ Bonus Number"
       },
       "lotto_shop_name": {
-        "name": "Lotto 6/45 Winning Shop"
+        "name": "Name"
       },
       "lotto_shop_address": {
-        "name": "Lotto 6/45 Winning Shop Address"
-      },
-      "lotto_shop_phone": {
-        "name": "Lotto 6/45 Winning Shop Phone"
+        "name": "Address"
       },
       "lotto_shop_distance": {
-        "name": "Lotto 6/45 Winning Shop Distance"
+        "name": "Distance"
       },
-      "lotto_shop_win_rank": {
-        "name": "Lotto 6/45 Win Rank"
+      "lotto_shop_phone": {
+        "name": "Phone"
       },
       "lotto_shop_win_type": {
-        "name": "Lotto 6/45 Win Type"
+        "name": "Win Type"
+      },
+      "lotto_shop_win_rank": {
+        "name": "Win Rank"
       },
       "lotto_shop_sells_lotto645": {
-        "name": "Lotto 6/45 Shop Sells Lotto 6/45"
+        "name": "Lotto 6/45"
       },
       "lotto_shop_sells_pension720": {
-        "name": "Lotto 6/45 Shop Sells Pension 720+"
+        "name": "Pension 720+"
       },
       "lotto_shop_sells_speetto500": {
-        "name": "Lotto 6/45 Shop Sells Speetto 500"
+        "name": "Speetto 500"
       },
       "lotto_shop_sells_speetto1000": {
-        "name": "Lotto 6/45 Shop Sells Speetto 1000"
+        "name": "Speetto 1000"
       },
       "lotto_shop_sells_speetto2000": {
-        "name": "Lotto 6/45 Shop Sells Speetto 2000"
+        "name": "Speetto 2000"
       },
       "pension_shop_name": {
-        "name": "Pension 720+ Winning Shop"
+        "name": "Name"
       },
       "pension_shop_address": {
-        "name": "Pension 720+ Winning Shop Address"
-      },
-      "pension_shop_phone": {
-        "name": "Pension 720+ Winning Shop Phone"
+        "name": "Address"
       },
       "pension_shop_distance": {
-        "name": "Pension 720+ Winning Shop Distance"
+        "name": "Distance"
       },
-      "pension_shop_win_rank": {
-        "name": "Pension 720+ Win Rank"
+      "pension_shop_phone": {
+        "name": "Phone"
       },
       "pension_shop_win_type": {
-        "name": "Pension 720+ Win Type"
+        "name": "Win Type"
+      },
+      "pension_shop_win_rank": {
+        "name": "Win Rank"
       },
       "pension_shop_sells_lotto645": {
-        "name": "Pension 720+ Shop Sells Lotto 6/45"
+        "name": "Lotto 6/45"
       },
       "pension_shop_sells_pension720": {
-        "name": "Pension 720+ Shop Sells Pension 720+"
+        "name": "Pension 720+"
       },
       "pension_shop_sells_speetto500": {
-        "name": "Pension 720+ Shop Sells Speetto 500"
+        "name": "Speetto 500"
       },
       "pension_shop_sells_speetto1000": {
-        "name": "Pension 720+ Shop Sells Speetto 1000"
+        "name": "Speetto 1000"
       },
       "pension_shop_sells_speetto2000": {
-        "name": "Pension 720+ Shop Sells Speetto 2000"
+        "name": "Speetto 2000"
       }
     },
     "button": {
