@@ -804,16 +804,11 @@ class DonghangLotteryPurchaseHistorySensor(
 
     @property
     def native_value(self) -> int:
-        """상태값: 구매 건수."""
+        """상태값: 구매 건수 (게임 수)."""
         items = self._get_items()
         if self._lottery_type == "lotto645":
-            # 로또: 티켓(바코드) 기준 건수 (게임이 아닌 티켓 수)
-            barcodes = set()
-            for item in items:
-                bc = item.get("barcd") or item.get("barCode") or ""
-                if bc:
-                    barcodes.add(bc)
-            return len(barcodes) if barcodes else len(items)
+            # 로또: 게임 수 (A, B, C, D, E 등)
+            return sum(1 for item in items if item.get("game_id"))
         return len(items)
 
     @property
@@ -827,15 +822,21 @@ class DonghangLotteryPurchaseHistorySensor(
         """로또6/45 구매 내역을 티켓별로 그룹화."""
         # 바코드별로 게임 그룹화 (로또는 gmInfo가 바코드)
         tickets: dict[str, dict[str, Any]] = {}
+        total_games = 0
         for item in items:
             bc = item.get("barcd") or item.get("gmInfo") or "unknown"
             if bc not in tickets:
+                # 당첨번호: 모두 0이면 미추첨으로 간주하여 None 처리
+                win_num = item.get("win_num")
+                if win_num and all(n == 0 for n in win_num):
+                    win_num = None
+                drawed = item.get("drawed", False)
                 tickets[bc] = {
                     "회차": item.get("ltEpsdView") or item.get("game_round"),
                     "구매일": item.get("sale_date") or item.get("eltOrdrDt"),
                     "추첨일": item.get("draw_date"),
-                    "추첨여부": item.get("drawed"),
-                    "당첨번호": item.get("win_num"),
+                    "추첨여부": "추첨완료" if drawed else "미추첨",
+                    "당첨번호": win_num,
                     "총당첨금": item.get("win_total_amt", 0),
                     "바코드": bc,
                     "게임": [],
@@ -843,18 +844,27 @@ class DonghangLotteryPurchaseHistorySensor(
             # 게임 상세 추가
             game_id = item.get("game_id")
             if game_id:
+                total_games += 1
                 win_rank = item.get("win_rank", 0)
+                drawed = item.get("drawed", False)
+                # 미추첨 시 결과 표시
+                if not drawed:
+                    result = "미추첨"
+                elif win_rank > 0:
+                    result = f"{win_rank}등"
+                else:
+                    result = "미당첨"
                 tickets[bc]["게임"].append({
                     "ID": game_id,
                     "번호": item.get("numbers", []),
-                    "등수": win_rank,
-                    "결과": f"{win_rank}등" if win_rank > 0 else "미당첨",
-                    "당첨금": item.get("win_amt", 0),
+                    "등수": win_rank if drawed else None,
+                    "결과": result,
+                    "당첨금": item.get("win_amt", 0) if drawed else None,
                 })
 
         ticket_list = list(tickets.values())
         return {
-            "총건수": len(ticket_list),
+            "총건수": total_games,
             "내역": ticket_list,
         }
 
