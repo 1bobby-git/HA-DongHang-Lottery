@@ -825,10 +825,10 @@ class DonghangLotteryPurchaseHistorySensor(
 
     def _format_lotto645_attrs(self, items: list[dict[str, Any]]) -> dict[str, Any]:
         """로또6/45 구매 내역을 티켓별로 그룹화."""
-        # 바코드별로 게임 그룹화
+        # 바코드별로 게임 그룹화 (로또는 gmInfo가 바코드)
         tickets: dict[str, dict[str, Any]] = {}
         for item in items:
-            bc = item.get("barcd") or item.get("barCode") or "unknown"
+            bc = item.get("barcd") or item.get("gmInfo") or "unknown"
             if bc not in tickets:
                 tickets[bc] = {
                     "회차": item.get("ltEpsdView") or item.get("game_round"),

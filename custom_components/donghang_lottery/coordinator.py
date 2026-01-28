@@ -473,17 +473,21 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             )
 
             # 로또6/45 항목과 연금복권720+ 항목 분리
+            # 로또: gmInfo에 바코드 저장됨
+            # 연금: gmInfo에 "조번호:숫자" 형식 저장됨
             purchase_ledger = []
             lotto_items = []
             for item in raw_list:
                 gds_nm = item.get("ltGdsNm", "")
-                barcode = item.get("barcd") or item.get("barCode") or ""
+                gm_info = item.get("gmInfo", "")
                 if "로또" in gds_nm:
-                    # 로또6/45
-                    if barcode:
-                        lotto_items.append(item)
+                    # 로또6/45 - gmInfo가 바코드
+                    if gm_info:
+                        # barcd 필드에 gmInfo 값 복사 (상세 조회용)
+                        item_with_barcode = {**item, "barcd": gm_info}
+                        lotto_items.append(item_with_barcode)
                     else:
-                        # 바코드 없는 로또 (상세 조회 불가)
+                        LOGGER.warning("[DHLottery] Lotto without gmInfo: %s", item)
                         purchase_ledger.append({**item, "_type": "lotto645_ticket"})
                 elif "연금" in gds_nm:
                     # 연금복권720+
