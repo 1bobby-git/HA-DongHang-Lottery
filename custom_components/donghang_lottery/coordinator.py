@@ -274,6 +274,38 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         a = math.sin(dlat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(dlon / 2) ** 2
         return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
+    def _get_last_draw_date(self, lotto_result, pension_result) -> str:
+        """마지막 추첨일 반환 (YYYYMMDD). 로또/연금 중 더 이른 날짜."""
+        dates = []
+
+        # lotto result에서 추첨일 추출
+        if lotto_result:
+            raw = lotto_result.get("_raw", lotto_result)
+            draw_date_str = raw.get("drwNoDate") or raw.get("drawDate")
+            if draw_date_str:
+                try:
+                    d = datetime.strptime(draw_date_str, "%Y-%m-%d").date()
+                    dates.append(d)
+                except ValueError:
+                    pass
+
+        # pension result에서 추첨일 추출
+        if pension_result:
+            raw = pension_result.get("_raw", pension_result)
+            draw_date_str = raw.get("drwNoDate") or raw.get("drawDate") or raw.get("epsdDt")
+            if draw_date_str:
+                try:
+                    d = datetime.strptime(draw_date_str, "%Y-%m-%d").date()
+                    dates.append(d)
+                except ValueError:
+                    pass
+
+        if dates:
+            return min(dates).strftime("%Y%m%d")
+
+        # 폴백: 7일 전
+        return (datetime.now().date() - timedelta(days=7)).strftime("%Y%m%d")
+
     def async_cancel_scheduled_update(self) -> None:
         """스케줄된 업데이트 취소."""
         if self._scheduled_update_unsub:
@@ -423,6 +455,68 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                         if prev_data is not None:
                             nearest_pension_shop = prev_data.nearest_pension_shop
 
+        # Fetch purchase ledger
+        purchase_ledger: list[dict[str, Any]] | None = None
+        try:
+            start_date = self._get_last_draw_date(lotto_result, pension_result)
+            end_date = datetime.now().date().strftime("%Y%m%d")
+
+            ledger_resp = await self.client.async_get_purchase_ledger(
+                start_date=start_date,
+                end_date=end_date,
+                page_size=100,
+            )
+            raw_list = (
+                ledger_resp.get("list")
+                or (ledger_resp.get("data") or {}).get("list")
+                or []
+            )
+
+            # 로또6/45 항목과 기타 항목 분리
+            purchase_ledger = []
+            lotto_items = []
+            for item in raw_list:
+                gds_nm = item.get("ltGdsNm", "")
+                barcode = item.get("barcd") or item.get("barCode") or ""
+                if "로또" in gds_nm and barcode:
+                    lotto_items.append(item)
+                else:
+                    purchase_ledger.append({**item, "_type": "pension720"})
+
+            # 로또 티켓 상세 조회 (동시 3개씩)
+            if lotto_items:
+                sem = asyncio.Semaphore(3)
+
+                async def _fetch_detail(item):
+                    barcode = item.get("barcd") or item.get("barCode") or ""
+                    async with sem:
+                        try:
+                            return item, await self.client.async_get_lotto645_ticket_detail(barcode)
+                        except Exception:
+                            LOGGER.warning("[DHLottery] Lotto ticket detail failed for barcode: %s", barcode)
+                            return item, None
+
+                results = await asyncio.gather(
+                    *[_fetch_detail(it) for it in lotto_items],
+                    return_exceptions=True,
+                )
+                for result in results:
+                    if isinstance(result, Exception):
+                        continue
+                    item, games = result
+                    if games:
+                        for game in games:
+                            purchase_ledger.append({**item, **game, "_type": "lotto645_game"})
+                    else:
+                        purchase_ledger.append({**item, "_type": "lotto645_ticket"})
+
+            LOGGER.info("[DHLottery] [OK] Purchase ledger: %d items (range: %s ~ %s)", len(purchase_ledger), start_date, end_date)
+        except DonghangLotteryError as err:
+            LOGGER.warning("[DHLottery] [FAIL] Purchase ledger query failed: %s", err)
+            errors.append(f"PurchaseLedger: {err}")
+            if prev_data is not None:
+                purchase_ledger = prev_data.purchase_ledger
+
         if errors:
             self._last_error = " | ".join(errors)
             LOGGER.info("[DHLottery] Partial failure: %s", self._last_error)
@@ -444,6 +538,7 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             pension720_round=pension_round,
             nearest_lotto_shop=nearest_lotto_shop,
             nearest_pension_shop=nearest_pension_shop,
+            purchase_ledger=purchase_ledger,
         )
 
 
@@ -455,3 +550,4 @@ class DonghangLotteryData:
     pension720_round: int | None = None
     nearest_lotto_shop: dict[str, Any] | None = None
     nearest_pension_shop: dict[str, Any] | None = None
+    purchase_ledger: list[dict[str, Any]] | None = None

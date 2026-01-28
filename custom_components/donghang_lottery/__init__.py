@@ -55,6 +55,7 @@ from .const import (
     LOTTERY_PENSION720,
     MODE_AUTO,
     MODE_MANUAL,
+    MODE_SEMI_AUTO,
     SERVICE_BUY_LOTTO645,
     SERVICE_BUY_PENSION720,
     SERVICE_CHECK_LOTTO645_NUMBERS,
@@ -229,7 +230,7 @@ def _register_services(hass: HomeAssistant) -> None:
             {
                 vol.Optional(ATTR_ENTRY_ID): cv.string,
                 vol.Optional(ATTR_COUNT, default=1): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
-                vol.Optional(ATTR_MODE, default=MODE_AUTO): vol.In([MODE_AUTO, MODE_MANUAL]),
+                vol.Optional(ATTR_MODE, default=MODE_AUTO): vol.In([MODE_AUTO, MODE_MANUAL, MODE_SEMI_AUTO]),
                 vol.Optional(ATTR_NUMBERS): list,
                 vol.Optional(ATTR_USE_MY_NUMBERS, default=False): cv.boolean,
             }
@@ -244,6 +245,10 @@ def _register_services(hass: HomeAssistant) -> None:
         schema=vol.Schema(
             {
                 vol.Optional(ATTR_ENTRY_ID): cv.string,
+                vol.Optional(ATTR_MODE, default=MODE_AUTO): vol.In([MODE_AUTO, MODE_MANUAL]),
+                vol.Optional(ATTR_COUNT, default=5): vol.All(vol.Coerce(int), vol.Range(min=1, max=5)),
+                vol.Optional(ATTR_NUMBERS): list,
+                vol.Optional(ATTR_USE_MY_NUMBERS, default=False): cv.boolean,
             }
         ),
         supports_response=SupportsResponse.ONLY,
@@ -454,6 +459,10 @@ async def _handle_buy_lotto645(call: ServiceCall) -> dict[str, Any]:
         if not numbers:
             raise DonghangLotteryError("Manual mode requires numbers")
         result = await client.async_buy_lotto645_manual(_normalize_lotto_numbers(numbers))
+    elif mode == MODE_SEMI_AUTO:
+        if not numbers:
+            raise DonghangLotteryError("Semi-auto mode requires partial numbers")
+        result = await client.async_buy_lotto645_semi_auto(_normalize_lotto_semi_auto(numbers))
     else:
         result = await client.async_buy_lotto645_auto(count)
 
@@ -466,7 +475,27 @@ async def _handle_buy_pension720(call: ServiceCall) -> dict[str, Any]:
     entry = _get_entry(hass, call)
     data = _get_entry_data(hass, entry)
     client: DonghangLotteryClient = data["client"]
-    result = await client.async_buy_pension720_auto_result()
+    store: MyNumberStore = data["store"]
+
+    mode = call.data.get(ATTR_MODE, MODE_AUTO)
+    count = call.data.get(ATTR_COUNT, 5)
+    use_my_numbers = call.data.get(ATTR_USE_MY_NUMBERS, False)
+    numbers = call.data.get(ATTR_NUMBERS)
+
+    if use_my_numbers:
+        numbers = store.data.pension720
+        if numbers:
+            mode = MODE_MANUAL
+
+    if mode == MODE_MANUAL:
+        if not numbers:
+            raise DonghangLotteryError("Manual mode requires numbers")
+        result = await client.async_buy_pension720_manual(
+            _normalize_pension720_numbers(numbers)
+        )
+    else:
+        result = await client.async_buy_pension720_auto(count=count)
+
     await data["coordinator"].async_request_refresh()
     return {"result": result}
 
@@ -680,6 +709,46 @@ def _normalize_lotto_numbers(raw_numbers: list[Any]) -> list[list[int]]:
         if len(numbers) != 6:
             raise DonghangLotteryError("Each lotto645 set must contain 6 numbers")
         normalized.append(sorted(numbers))
+    return normalized
+
+
+def _normalize_lotto_semi_auto(raw_numbers: list[Any]) -> list[list[int]]:
+    """반자동 번호 정규화 (1-5개 번호 허용)."""
+    normalized: list[list[int]] = []
+    for entry in raw_numbers:
+        if isinstance(entry, str):
+            parts = [part.strip() for part in entry.replace(",", " ").split()]
+            numbers = [int(part) for part in parts if part]
+        else:
+            numbers = [int(num) for num in entry]
+        if len(numbers) < 1 or len(numbers) > 5:
+            raise DonghangLotteryError(
+                "Each semi-auto entry must contain 1-5 numbers"
+            )
+        normalized.append(sorted(numbers))
+    return normalized
+
+
+def _normalize_pension720_numbers(raw_numbers: list[Any]) -> list[dict[str, Any]]:
+    """연금복권720+ 수동 번호 정규화.
+
+    Input format: ["2123456", "3654321"] (G+NNNNNN)
+    Output format: [{"group": 2, "number": "123456"}, ...]
+    """
+    normalized: list[dict[str, Any]] = []
+    for entry in raw_numbers:
+        s = str(entry).strip()
+        if len(s) != 7:
+            raise DonghangLotteryError(
+                f"Pension720 number must be 7 chars (group + 6 digits), got: {s}"
+            )
+        group = int(s[0])
+        number = s[1:]
+        if group < 1 or group > 5:
+            raise DonghangLotteryError(f"Group must be 1-5, got: {group}")
+        if not number.isdigit():
+            raise DonghangLotteryError(f"Number must be 6 digits, got: {number}")
+        normalized.append({"group": group, "number": number})
     return normalized
 
 

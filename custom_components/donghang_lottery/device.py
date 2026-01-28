@@ -29,6 +29,10 @@ def device_name_pension_shop() -> str:
     return "내 주변 연금복권 당첨 판매점"
 
 
+def device_name_purchase_history() -> str:
+    return "구매/당첨내역"
+
+
 def device_info_for_group(entry_id: str, username: str, group: str) -> DeviceInfo:
     if group == "lotto":
         name = device_name_lotto()
@@ -38,6 +42,8 @@ def device_info_for_group(entry_id: str, username: str, group: str) -> DeviceInf
         name = device_name_lotto_shop()
     elif group == "pension_shop":
         name = device_name_pension_shop()
+    elif group == "purchase_history":
+        name = device_name_purchase_history()
     else:
         name = device_name_account(username)
 

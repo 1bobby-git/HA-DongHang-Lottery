@@ -41,6 +41,7 @@ LOTTERY_PENSION720 = "pt720"
 
 MODE_AUTO = "auto"
 MODE_MANUAL = "manual"
+MODE_SEMI_AUTO = "semi_auto"
 
 SERVICE_REFRESH_ACCOUNT = "refresh_account"
 SERVICE_BUY_LOTTO645 = "buy_lotto645"

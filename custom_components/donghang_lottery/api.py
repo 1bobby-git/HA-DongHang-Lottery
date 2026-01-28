@@ -562,11 +562,6 @@ class DonghangLotteryClient:
 
             self._logged_in = True
 
-            try:
-                await self._request("GET", "https://www.dhlottery.co.kr/common.do?method=main")
-            except DonghangLotteryError:
-                pass
-
     async def async_keepalive(self) -> None:
         if not self._logged_in:
             await self.async_login()
@@ -700,23 +695,94 @@ class DonghangLotteryClient:
         return max(rounds)
 
     async def async_buy_lotto645_auto(self, count: int) -> dict[str, Any]:
+        if self._relay_url:
+            raise DonghangLotteryResponseError(
+                "릴레이 모드에서는 복권 구매가 지원되지 않습니다. 직접 연결 모드에서만 구매할 수 있습니다."
+            )
         return await self._buy_lotto645(count, mode="auto")
 
     async def async_buy_lotto645_manual(self, numbers: list[list[int]]) -> dict[str, Any]:
+        if self._relay_url:
+            raise DonghangLotteryResponseError(
+                "릴레이 모드에서는 복권 구매가 지원되지 않습니다. 직접 연결 모드에서만 구매할 수 있습니다."
+            )
         return await self._buy_lotto645(len(numbers), mode="manual", numbers=numbers)
 
-    async def async_buy_pension720_auto(self) -> dict[str, Any]:
+    async def async_buy_lotto645_semi_auto(self, partial_numbers: list[list[int]]) -> dict[str, Any]:
+        if self._relay_url:
+            raise DonghangLotteryResponseError(
+                "릴레이 모드에서는 복권 구매가 지원되지 않습니다. 직접 연결 모드에서만 구매할 수 있습니다."
+            )
+        return await self._buy_lotto645(len(partial_numbers), mode="semi_auto", numbers=partial_numbers)
+
+    async def async_buy_pension720_auto(self, count: int = 5) -> dict[str, Any]:
+        if self._relay_url:
+            raise DonghangLotteryResponseError(
+                "릴레이 모드에서는 복권 구매가 지원되지 않습니다. 직접 연결 모드에서만 구매할 수 있습니다."
+            )
         await self.async_login()
         self._key_code = self._session_id or ""
+        if count < 1 or count > 5:
+            raise DonghangLotteryResponseError("Pension720 count must be 1-5")
         win720_round = await self._get_latest_pension720_round_for_buy()
         enc_numbers = await self._make_auto_numbers(win720_round)
-        order_no, order_date = await self._make_order(win720_round, enc_numbers)
-        result = await self._conn_pro(win720_round, enc_numbers, self._username, order_no, order_date)
+        order_no, order_date = await self._make_order(win720_round, enc_numbers, count=count)
+        result = await self._conn_pro(
+            win720_round, enc_numbers, self._username, order_no, order_date, count=count
+        )
         return result
 
     async def async_buy_pension720_auto_result(self) -> dict[str, Any]:
         result = await self.async_buy_pension720_auto()
         result["round"] = result.get("round") or await self._get_latest_pension720_round_for_buy()
+        return result
+
+    async def async_buy_pension720_manual(
+        self, selections: list[dict[str, Any]]
+    ) -> dict[str, Any]:
+        """연금복권720+ 수동 구매.
+
+        Args:
+            selections: [{"group": 1-5, "number": "NNNNNN"}, ...]
+        """
+        if self._relay_url:
+            raise DonghangLotteryResponseError(
+                "릴레이 모드에서는 복권 구매가 지원되지 않습니다. 직접 연결 모드에서만 구매할 수 있습니다."
+            )
+        _LOGGER.info("[DHLottery] 연금복권 수동 구매 시작 (번호: %s)", selections)
+        await self.async_login()
+        self._key_code = self._session_id or ""
+        _LOGGER.info("[DHLottery] [1/4] 로그인 완료")
+
+        count = len(selections)
+        if count < 1 or count > 5:
+            raise DonghangLotteryResponseError("Pension720 count must be 1-5")
+
+        # 번호 검증 및 포맷
+        sel_parts = []
+        for sel in selections:
+            group = int(sel["group"])
+            number = str(sel["number"]).zfill(6)
+            if group < 1 or group > 5:
+                raise DonghangLotteryResponseError(f"Group must be 1-5, got {group}")
+            if len(number) != 6 or not number.isdigit():
+                raise DonghangLotteryResponseError(f"Number must be 6 digits, got {number}")
+            sel_parts.append(f"{group}{number}")
+
+        sel_no = ",".join(sel_parts)
+        win720_round = await self._get_latest_pension720_round_for_buy()
+        _LOGGER.info("[DHLottery] [2/4] 회차 조회 완료: %s회", win720_round)
+
+        order_no, order_date = await self._make_order(
+            win720_round, sel_no, count=count, buy_type="M"
+        )
+        _LOGGER.info("[DHLottery] [3/4] 주문 생성 완료: %s", order_no)
+
+        result = await self._conn_pro(
+            win720_round, sel_no, self._username, order_no, order_date,
+            count=count, buy_type="M",
+        )
+        _LOGGER.info("[DHLottery] [4/4] 구매 완료")
         return result
 
     async def async_get_unclaimed_prizes(self) -> list[dict[str, Any]]:
@@ -790,7 +856,7 @@ class DonghangLotteryClient:
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "AJAX": "true",
         }
-        cookie_header = self._get_cookie_header()
+        cookie_header = self._get_cookie_header("https://www.dhlottery.co.kr/mypage/selectMyLotteryledger.do")
         if cookie_header:
             headers["Cookie"] = cookie_header
 
@@ -799,6 +865,75 @@ class DonghangLotteryClient:
             headers=headers,
             params=params,
         )
+
+    async def async_get_lotto645_ticket_detail(self, barcode: str) -> list[dict[str, Any]]:
+        """로또 6/45 티켓 상세 조회 (바코드 기반).
+
+        Args:
+            barcode: 복권 바코드 번호
+
+        Returns:
+            게임별 상세 정보 목록:
+            [{"game_id": "A", "numbers": [1,6,12,21,34,41], "win_rank": 0, "win_amt": 0,
+              "game_type": 1, "win_num": [1,3,17,26,27,42,23], "game_round": 1206,
+              "drawed": True, "draw_date": "2026/01/10", "sale_date": "2026/01/07 (수) 12:07:25",
+              "win_total_amt": 0}, ...]
+        """
+        await self.async_login()
+
+        url = f"https://www.dhlottery.co.kr/mypage/lotto645TicketDetail.do?barcd={barcode}"
+        headers = {
+            **BASE_HEADERS,
+            "Referer": "https://www.dhlottery.co.kr/mypage/home",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "AJAX": "true",
+        }
+        cookie_header = self._get_cookie_header(url)
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+
+        try:
+            resp_data = await self._get_json(url, headers=headers)
+        except Exception as err:
+            _LOGGER.error("[DHLottery] 티켓 상세 조회 실패 (바코드: %s): %s", barcode, err)
+            return []
+
+        # JSON 응답 파싱
+        data = resp_data.get("data") or {}
+        ticket = data.get("ticket") or {}
+        game_dtl = ticket.get("game_dtl") or []
+
+        if not game_dtl:
+            _LOGGER.warning("[DHLottery] 티켓 상세: game_dtl 없음 (바코드: %s), 응답: %s", barcode, resp_data)
+            return []
+
+        # 티켓 레벨 공통 정보
+        win_num = ticket.get("win_num", [])
+        game_round = ticket.get("game_round")
+        drawed = ticket.get("drawed", False)
+        draw_date = ticket.get("draw_date", "")
+        sale_date = ticket.get("sale_date", "")
+        win_total_amt = ticket.get("win_total_amt", 0)
+
+        games = []
+        for dtl in game_dtl:
+            games.append({
+                "game_id": dtl.get("idx", ""),
+                "numbers": dtl.get("num", []),
+                "win_rank": dtl.get("rank", 0),
+                "win_amt": dtl.get("amt", 0),
+                "game_type": dtl.get("type", 0),
+                "win_num": win_num,
+                "game_round": game_round,
+                "drawed": drawed,
+                "draw_date": draw_date,
+                "sale_date": sale_date,
+                "win_total_amt": win_total_amt,
+            })
+
+        _LOGGER.debug("[DHLottery] 티켓 상세 조회 완료 (바코드: %s): %d 게임", barcode, len(games))
+        return games
 
     async def async_search_lottery_shops(
         self,
@@ -963,7 +1098,7 @@ class DonghangLotteryClient:
             "AJAX": "true",
             "requestMenuUri": "/mypage/home",
         }
-        cookie_header = self._get_cookie_header()
+        cookie_header = self._get_cookie_header("https://www.dhlottery.co.kr/mypage/selectUserMndp.do")
         if cookie_header:
             headers["Cookie"] = cookie_header
         data = await self._get_json(url, headers=headers)
@@ -981,7 +1116,7 @@ class DonghangLotteryClient:
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "AJAX": "true",
         }
-        cookie_header = self._get_cookie_header()
+        cookie_header = self._get_cookie_header("https://www.dhlottery.co.kr/mypage/selectMypageTooltip.do")
         if cookie_header:
             headers["Cookie"] = cookie_header
         data = await self._get_json(
@@ -1155,13 +1290,44 @@ class DonghangLotteryClient:
             if "WMONID" in cookies:
                 self._wmonid = cookies["WMONID"].value
 
-    def _get_cookie_header(self) -> str:
-        parts = []
+    def _get_cookie_header(self, target_url: str = "") -> str:
+        """Build comprehensive cookie header including jar cookies.
+
+        Args:
+            target_url: Target URL to extract jar cookies for (optional)
+
+        Returns:
+            Cookie header string with all relevant cookies
+        """
+        seen: dict[str, str] = {}
+
+        # 1. Explicitly tracked cookies (cross-subdomain support)
         if self._session_id:
-            parts.append(f"DHJSESSIONID={self._session_id}")
+            seen["DHJSESSIONID"] = self._session_id
         if self._wmonid:
-            parts.append(f"WMONID={self._wmonid}")
-        return "; ".join(parts)
+            seen["WMONID"] = self._wmonid
+
+        # 2. Add cookies from jar (catches extra cookies like JSESSIONID)
+        jar_urls: list[str] = []
+        if self._relay_url:
+            jar_urls.append(f"{self._relay_url}/")
+            if target_url:
+                resolved = self._resolve_url(target_url)
+                if resolved not in jar_urls:
+                    jar_urls.append(resolved)
+        elif target_url:
+            jar_urls.append(target_url)
+
+        for jar_url in jar_urls:
+            try:
+                cookies = self._session.cookie_jar.filter_cookies(URL(jar_url))
+                for name, cookie in cookies.items():
+                    if name not in seen:
+                        seen[name] = cookie.value
+            except Exception:
+                pass
+
+        return "; ".join(f"{k}={v}" for k, v in seen.items())
 
     async def _get_latest_lotto645_round(self) -> int:
         # 새 API에서 직접 최신 회차 조회
@@ -1175,12 +1341,18 @@ class DonghangLotteryClient:
                 return int(round_no)
 
         # 폴백: 메인 페이지에서 시도
-        resp = await self._request("GET", "https://www.dhlottery.co.kr/common.do?method=main")
-        html = await self._read_text(resp)
-        soup = BeautifulSoup(html, "html5lib")
-        found = soup.find("strong", id="lottoDrwNo")
-        if found and found.text.isdigit():
-            return int(found.text)
+        try:
+            resp = await self._request(
+                "GET", "https://www.dhlottery.co.kr/common.do?method=main",
+                timeout=20, max_retries=1,
+            )
+            html = await self._read_text(resp)
+            soup = BeautifulSoup(html, "html5lib")
+            found = soup.find("strong", id="lottoDrwNo")
+            if found and found.text.isdigit():
+                return int(found.text)
+        except (DonghangLotteryError, asyncio.TimeoutError):
+            _LOGGER.warning("[DHLottery] 로또 회차 폴백 조회 실패")
         raise DonghangLotteryResponseError("Failed to detect latest lotto645 round")
 
     async def _get_latest_pension720_round(self) -> int:
@@ -1190,12 +1362,19 @@ class DonghangLotteryClient:
         raise DonghangLotteryResponseError("Failed to detect latest pension720 round")
 
     async def _get_latest_pension720_round_for_buy(self) -> str:
-        resp = await self._request("GET", "https://www.dhlottery.co.kr/common.do?method=main")
-        html = await self._read_text(resp)
-        soup = BeautifulSoup(html, "html5lib")
-        found = soup.find("strong", id="drwNo720")
-        if found and found.text.isdigit():
-            return str(int(found.text) - 1)
+        """연금복권 720+ 구매 회차 조회 (API 우선, 날짜 계산 폴백).
+
+        common.do 의존 제거 - 경량 JSON API 사용.
+        """
+        # 1차: 경량 JSON API로 최신 완료 회차 조회
+        try:
+            rounds = await self.async_get_pension720_rounds()
+            if rounds:
+                return str(rounds[-1])
+        except (DonghangLotteryError, asyncio.TimeoutError):
+            _LOGGER.warning("[DHLottery] 연금복권 회차 API 조회 실패 - 날짜 계산 폴백")
+
+        # 2차: 날짜 기반 계산 (네트워크 불필요)
         base_date = dt.date(2024, 12, 26)
         base_round = 244
         today = dt.date.today()
@@ -1217,7 +1396,7 @@ class DonghangLotteryClient:
             "Referer": "https://ol.dhlottery.co.kr/olotto/game/game645.do",
             "Content-Type": "application/x-www-form-urlencoded",
         }
-        cookie_header = self._get_cookie_header()
+        cookie_header = self._get_cookie_header("https://ol.dhlottery.co.kr/olotto/game/execBuy.do")
         if cookie_header:
             headers["Cookie"] = cookie_header
 
@@ -1228,7 +1407,7 @@ class DonghangLotteryClient:
                 {"genType": "0", "arrGameChoiceNum": None, "alpabet": slot}
                 for slot in _slots()[:count]
             ]
-        else:
+        elif mode == "manual":
             if not numbers or len(numbers) != count:
                 raise DonghangLotteryResponseError("Manual numbers must match count")
             param = []
@@ -1240,6 +1419,24 @@ class DonghangLotteryClient:
                     {
                         "genType": "1",
                         "arrGameChoiceNum": choices,
+                        "alpabet": _slots()[idx],
+                    }
+                )
+        elif mode == "semi_auto":
+            if not numbers or len(numbers) != count:
+                raise DonghangLotteryResponseError("Semi-auto numbers must match count")
+            param = []
+            for idx, partial in enumerate(numbers):
+                if not partial or len(partial) < 1 or len(partial) > 5:
+                    raise DonghangLotteryResponseError(
+                        "Each semi-auto entry must have 1-5 numbers"
+                    )
+                sorted_nums = sorted(partial)
+                choices = [str(n) for n in sorted_nums] + ["null"] * (6 - len(sorted_nums))
+                param.append(
+                    {
+                        "genType": "2",
+                        "arrGameChoiceNum": ",".join(choices),
                         "alpabet": _slots()[idx],
                     }
                 )
@@ -1283,7 +1480,7 @@ class DonghangLotteryClient:
             **BASE_HEADERS,
             "Referer": "https://www.dhlottery.co.kr/common.do?method=main",
         }
-        cookie_header = self._get_cookie_header()
+        cookie_header = self._get_cookie_header("https://ol.dhlottery.co.kr/olotto/game/game645.do")
         if cookie_header:
             html_headers["Cookie"] = cookie_header
 
@@ -1322,7 +1519,7 @@ class DonghangLotteryClient:
             "&SEL_NO=&BUY_CNT=&AUTO_SEL_SET=SA&SEL_CLASS=&BUY_TYPE=A&ACCS_TYPE=01"
         ).format(round=win720_round)
         data = {"q": quote(self._enc_text(payload))}
-        headers = self._win720_headers()
+        headers = self._win720_headers("https://el.dhlottery.co.kr/makeAutoNo.do")
         resp = await self._request(
             "POST",
             "https://el.dhlottery.co.kr/makeAutoNo.do",
@@ -1337,13 +1534,20 @@ class DonghangLotteryClient:
             raise DonghangLotteryResponseError("Failed to extract pension720 numbers")
         return sel_no
 
-    async def _make_order(self, win720_round: str, sel_numbers: str) -> tuple[str, str]:
+    async def _make_order(
+        self, win720_round: str, sel_numbers: str,
+        count: int = 5, buy_type: str = "M",
+    ) -> tuple[str, str]:
+        auto_sel_set = "SA" if buy_type == "A" or buy_type == "M" else ""
         payload = (
-            "ROUND={round}&round={round}&LT_EPSD={round}&AUTO_SEL_SET=SA&SEL_CLASS="
-            "&SEL_NO={sel}&BUY_TYPE=M&BUY_CNT=5"
-        ).format(round=win720_round, sel=sel_numbers)
+            "ROUND={round}&round={round}&LT_EPSD={round}&AUTO_SEL_SET={auto_sel}"
+            "&SEL_CLASS=&SEL_NO={sel}&BUY_TYPE={buy_type}&BUY_CNT={count}"
+        ).format(
+            round=win720_round, sel=sel_numbers,
+            auto_sel=auto_sel_set, buy_type=buy_type, count=count,
+        )
         data = {"q": quote(self._enc_text(payload))}
-        headers = self._win720_headers()
+        headers = self._win720_headers("https://el.dhlottery.co.kr/makeOrderNo.do")
         resp = await self._request(
             "POST",
             "https://el.dhlottery.co.kr/makeOrderNo.do",
@@ -1356,35 +1560,73 @@ class DonghangLotteryClient:
         return parsed["orderNo"], parsed["orderDate"]
 
     async def _conn_pro(
-        self, win720_round: str, sel_numbers: str, username: str, order_no: str, order_date: str
+        self, win720_round: str, sel_numbers: str, username: str,
+        order_no: str, order_date: str,
+        count: int = 5, buy_type: str = "A", set_type: str = "SA",
     ) -> dict[str, Any]:
-        buy_no = "".join([f"{idx}{sel_numbers}%2C" for idx in range(1, 6)])[:-3]
+        # buy_no: each ticket index + selected numbers
+        buy_no_parts = []
+        for idx in range(1, count + 1):
+            buy_no_parts.append(f"{idx}{sel_numbers}")
+        buy_no = "%2C".join(buy_no_parts)
+
+        # BUY_SET_TYPE: comma-separated set_type
+        buy_set_type = "%2C".join([set_type] * count)
+
+        # BUY_TYPE: comma-separated buy_type with trailing comma
+        buy_type_str = "%2C".join([buy_type] * count) + "%2C"
+
+        total_cost = 1000 * count
+
         payload = (
-            "ROUND={round}&FLAG=&BUY_KIND=01&BUY_NO={buy_no}&BUY_CNT=5"
-            "&BUY_SET_TYPE=SA%2CSA%2CSA%2CSA%2CSA&BUY_TYPE=A%2CA%2CA%2CA%2CA%2C"
+            "ROUND={round}&FLAG=&BUY_KIND=01&BUY_NO={buy_no}&BUY_CNT={count}"
+            "&BUY_SET_TYPE={buy_set_type}&BUY_TYPE={buy_type_str}"
             "&CS_TYPE=01&orderNo={order_no}&orderDate={order_date}&TRANSACTION_ID=&WIN_DATE="
             "&USER_ID={username}&PAY_TYPE=&resultErrorCode=&resultErrorMsg=&resultOrderNo="
-            "&WORKING_FLAG=true&NUM_CHANGE_TYPE=&auto_process=N&set_type=SA&classnum=&selnum="
-            "&buytype=M&num1=&num2=&num3=&num4=&num5=&num6=&DSEC=34&CLOSE_DATE="
-            "&verifyYN=N&curdeposit=&curpay=5000&DROUND={round}&DSEC=0&CLOSE_DATE=&verifyYN=N"
+            "&WORKING_FLAG=true&NUM_CHANGE_TYPE=&auto_process=N&set_type={set_type}&classnum=&selnum="
+            "&buytype={buy_type_single}&num1=&num2=&num3=&num4=&num5=&num6=&DSEC=34&CLOSE_DATE="
+            "&verifyYN=N&curdeposit=&curpay={total_cost}&DROUND={round}&DSEC=0&CLOSE_DATE=&verifyYN=N"
             "&lotto720_radio_group=on"
         ).format(
             round=win720_round,
             buy_no=buy_no,
+            count=count,
+            buy_set_type=buy_set_type,
+            buy_type_str=buy_type_str,
             order_no=order_no,
             order_date=order_date,
             username=username,
+            set_type=set_type,
+            buy_type_single=buy_type,
+            total_cost=total_cost,
         )
         data = {"q": quote(self._enc_text(payload))}
-        headers = self._win720_headers()
+        headers = self._win720_headers("https://el.dhlottery.co.kr/connPro.do")
         resp = await self._request(
             "POST",
             "https://el.dhlottery.co.kr/connPro.do",
             headers=headers,
             data=data,
         )
-        body = await self._read_json(resp)
-        decrypted = self._dec_text(body.get("q", ""))
+        raw = await resp.read()
+        raw_text = raw.decode("utf-8", errors="ignore")
+
+        # JSON 파싱 시도
+        try:
+            body = json.loads(raw_text)
+        except json.JSONDecodeError:
+            _LOGGER.error("[DHLottery] connPro 응답이 JSON이 아님: %s", raw_text[:500])
+            raise DonghangLotteryResponseError(
+                f"connPro 응답 파싱 실패 (서버 에러 가능): {raw_text[:200]}"
+            )
+
+        enc_value = body.get("q", "")
+        if not enc_value:
+            # 암호화되지 않은 직접 응답 (에러 코드 등)
+            _LOGGER.info("[DHLottery] connPro 직접 응답: %s", body)
+            return body
+
+        decrypted = self._dec_text(enc_value)
         return json.loads(decrypted)
 
     def _enc_text(self, plain_text: str) -> str:
@@ -1408,7 +1650,7 @@ class DonghangLotteryClient:
         decrypted = cipher.decrypt(base64.b64decode(crypt_text))
         return _unpad_bytes(decrypted).decode("utf-8", errors="ignore")
 
-    def _win720_headers(self) -> dict[str, str]:
+    def _win720_headers(self, target_url: str = "") -> dict[str, str]:
         headers = {
             **BASE_HEADERS,
             "Origin": "https://el.dhlottery.co.kr",
@@ -1417,7 +1659,7 @@ class DonghangLotteryClient:
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Accept": "*/*",
         }
-        cookie_header = self._get_cookie_header()
+        cookie_header = self._get_cookie_header(target_url)
         if cookie_header:
             headers["Cookie"] = cookie_header
         return headers
@@ -1506,7 +1748,7 @@ class DonghangLotteryClient:
                         if attempt < effective_retries:
                             await asyncio.sleep(random.uniform(5, 10))
                             await self.async_login(force=True)
-                            cookie_header = self._get_cookie_header()
+                            cookie_header = self._get_cookie_header(url)
                             if cookie_header:
                                 request_headers["Cookie"] = cookie_header
                             continue

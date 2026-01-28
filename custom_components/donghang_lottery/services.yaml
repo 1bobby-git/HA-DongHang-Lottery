@@ -21,7 +21,7 @@ buy_lotto645:
       example: 3
     mode:
       name: Mode
-      description: auto or manual.
+      description: auto, manual, or semi_auto.
       example: "auto"
     numbers:
       name: Numbers
@@ -34,12 +34,28 @@ buy_lotto645:
 
 buy_pension720:
   name: Buy Pension 720+
-  description: Purchase Pension 720+ (auto).
+  description: Purchase Pension 720+ tickets.
   fields:
     entry_id:
       name: Entry ID
       description: Optional config entry id.
       example: "0123456789abcdef"
+    mode:
+      name: Mode
+      description: auto or manual.
+      example: "auto"
+    count:
+      name: Count
+      description: Number of tickets (1-5).
+      example: 5
+    numbers:
+      name: Numbers
+      description: Manual numbers (list of "GNNNNNN" strings, G=group 1-5).
+      example: ["2123456"]
+    use_my_numbers:
+      name: Use stored numbers
+      description: Use saved my numbers for manual purchase.
+      example: true
 
 fetch_lotto645_result:
   name: Fetch Lotto 6/45 result
