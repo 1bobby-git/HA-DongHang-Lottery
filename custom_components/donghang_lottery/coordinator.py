@@ -472,16 +472,25 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                 or []
             )
 
-            # 로또6/45 항목과 기타 항목 분리
+            # 로또6/45 항목과 연금복권720+ 항목 분리
             purchase_ledger = []
             lotto_items = []
             for item in raw_list:
                 gds_nm = item.get("ltGdsNm", "")
                 barcode = item.get("barcd") or item.get("barCode") or ""
-                if "로또" in gds_nm and barcode:
-                    lotto_items.append(item)
-                else:
+                if "로또" in gds_nm:
+                    # 로또6/45
+                    if barcode:
+                        lotto_items.append(item)
+                    else:
+                        # 바코드 없는 로또 (상세 조회 불가)
+                        purchase_ledger.append({**item, "_type": "lotto645_ticket"})
+                elif "연금" in gds_nm:
+                    # 연금복권720+
                     purchase_ledger.append({**item, "_type": "pension720"})
+                else:
+                    # 기타 복권 (스피또 등) - 일단 무시
+                    LOGGER.debug("[DHLottery] Unknown lottery type ignored: %s", gds_nm)
 
             # 로또 티켓 상세 조회 (동시 3개씩)
             if lotto_items:
