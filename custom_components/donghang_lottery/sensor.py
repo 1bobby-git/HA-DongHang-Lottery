@@ -11,7 +11,8 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorEntityDescription,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -490,7 +491,7 @@ SENSORS: tuple[DonghangLotterySensorDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: DonghangLotteryCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
@@ -500,6 +501,15 @@ async def async_setup_entry(
         for description in SENSORS
     ]
     async_add_entities(entities)
+
+    # 구매 내역 동적 sensor 트래커
+    tracker = DonghangLotteryPurchaseHistoryTracker(
+        coordinator, entry.entry_id, username, async_add_entities,
+    )
+    entry.async_on_unload(
+        coordinator.async_add_listener(tracker._handle_coordinator_update)
+    )
+    tracker._handle_coordinator_update()
 
 
 class DonghangLotterySensor(CoordinatorEntity[DonghangLotteryCoordinator], SensorEntity):
@@ -740,3 +750,178 @@ def _format_yn(value: Any) -> str | None:
     elif v == "N":
         return "없음"
     return str(value)
+
+
+def _format_pension_gm_info(gm_info: str) -> str:
+    """연금복권 게임정보 포맷: '1:603973' → '1조 6,0,3,9,7,3'."""
+    if not gm_info or ":" not in gm_info:
+        return gm_info or ""
+    parts = gm_info.split(":", 1)
+    group = parts[0]
+    number = parts[1] if len(parts) > 1 else ""
+    digits = ",".join(number)
+    return f"{group}조 {digits}"
+
+
+class DonghangLotteryPurchaseHistoryTracker:
+    """구매 내역 sensor 동적 관리."""
+
+    def __init__(
+        self,
+        coordinator: DonghangLotteryCoordinator,
+        entry_id: str,
+        username: str,
+        async_add_entities: AddEntitiesCallback,
+    ) -> None:
+        self._coordinator = coordinator
+        self._entry_id = entry_id
+        self._username = username
+        self._async_add_entities = async_add_entities
+        self._tracked_ids: set[str] = set()
+
+    def _make_unique_id(self, item: dict[str, Any]) -> str:
+        """고유 ID 생성."""
+        round_no = item.get("ltEpsdView") or item.get("game_round") or item.get("round", "0")
+        item_type = item.get("_type", "unknown")
+
+        if item_type == "lotto645_game":
+            barcode = item.get("barcd") or item.get("barCode") or "unknown"
+            barcode_suffix = barcode[-6:] if len(barcode) >= 6 else barcode
+            game_id = item.get("game_id", "X")
+            return f"{self._entry_id}_purchase_{round_no}_lotto645_{game_id}_{barcode_suffix}"
+        else:
+            # 연금복권: 바코드 없음 → gmInfo 사용
+            gm_info = item.get("gmInfo", "").replace(":", "_")
+            return f"{self._entry_id}_purchase_{round_no}_pension720_{gm_info}"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """coordinator 데이터 변경시 호출. 새 엔티티 추가."""
+        data: DonghangLotteryData | None = self._coordinator.data
+        if not data or not data.purchase_ledger:
+            return
+
+        new_entities: list[DonghangLotteryPurchaseSensor] = []
+        for item in data.purchase_ledger:
+            uid = self._make_unique_id(item)
+            if uid not in self._tracked_ids:
+                self._tracked_ids.add(uid)
+                new_entities.append(
+                    DonghangLotteryPurchaseSensor(
+                        self._coordinator,
+                        item,
+                        uid,
+                        self._entry_id,
+                        self._username,
+                    )
+                )
+        if new_entities:
+            self._async_add_entities(new_entities)
+
+
+class DonghangLotteryPurchaseSensor(
+    CoordinatorEntity[DonghangLotteryCoordinator], SensorEntity
+):
+    """구매/당첨 내역 sensor."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: DonghangLotteryCoordinator,
+        item: dict[str, Any],
+        unique_id: str,
+        entry_id: str,
+        username: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = unique_id
+        self._barcode = item.get("barcd") or item.get("barCode") or ""
+        self._game_id = item.get("game_id", "")
+        self._item_type = item.get("_type", "unknown")
+        self._gm_info = item.get("gmInfo", "")
+        self._attr_device_info = device_info_for_group(
+            entry_id, username, "purchase_history"
+        )
+
+        # 이름: "1206회 로또6/45 A" 또는 "244회 연금복권720+ 1조 6,0,3,9,7,3"
+        round_no = item.get("ltEpsdView") or item.get("game_round") or item.get("round", "")
+        gds_nm = item.get("ltGdsNm", "")
+        if self._item_type == "lotto645_game" and self._game_id:
+            self._attr_name = f"{round_no}회 {gds_nm} {self._game_id}"
+        elif self._gm_info:
+            self._attr_name = f"{round_no}회 {gds_nm} {_format_pension_gm_info(self._gm_info)}"
+        else:
+            self._attr_name = f"{round_no}회 {gds_nm}"
+        self._attr_name = self._attr_name.strip()
+        self._attr_icon = "mdi:ticket-confirmation"
+
+        # Store initial item as fallback
+        self._initial_item = item
+
+    @property
+    def _current_item(self) -> dict[str, Any]:
+        """현재 coordinator 데이터에서 매칭되는 항목 찾기."""
+        data: DonghangLotteryData | None = self.coordinator.data
+        if data and data.purchase_ledger:
+            for item in data.purchase_ledger:
+                if self._item_type == "lotto645_game":
+                    barcode = item.get("barcd") or item.get("barCode") or ""
+                    if barcode == self._barcode and item.get("game_id", "") == self._game_id:
+                        return item
+                else:
+                    gm_info = item.get("gmInfo", "")
+                    if gm_info == self._gm_info:
+                        return item
+        return self._initial_item
+
+    @property
+    def native_value(self) -> str | None:
+        """센서 상태값: 당첨결과 텍스트."""
+        item = self._current_item
+        if self._item_type == "lotto645_game":
+            drawed = item.get("drawed", False)
+            if not drawed:
+                return "미추첨"
+            win_rank = item.get("win_rank", 0)
+            if win_rank > 0:
+                return f"{win_rank}등"
+            return "미당첨"
+        # 연금복권 등
+        win_result = item.get("ltWnResult", "")
+        return win_result if win_result else "미확인"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        item = self._current_item
+        # 공통 속성 (한글 명칭)
+        lt_wn_amt = item.get("ltWnAmt")
+        attrs: dict[str, Any] = {
+            "주문일시": item.get("eltOrdrDt"),
+            "복권종류": item.get("ltGdsNm"),
+            "구매수량": item.get("prchsQty"),
+            "당첨결과": item.get("ltWnResult") or "",
+            "당첨금액": lt_wn_amt if lt_wn_amt is not None else 0,
+            "회차반영일": item.get("epsdRflDt"),
+            "회차": item.get("ltEpsdView"),
+        }
+        # 로또6/45 게임별 상세
+        if self._item_type == "lotto645_game":
+            attrs.update({
+                "게임ID": item.get("game_id"),
+                "선택번호": item.get("numbers"),
+                "당첨등수": item.get("win_rank"),
+                "당첨금": item.get("win_amt", 0),
+                "게임유형": item.get("game_type"),
+                "당첨번호": item.get("win_num"),
+                "추첨회차": item.get("game_round"),
+                "추첨여부": item.get("drawed"),
+                "추첨일": item.get("draw_date"),
+                "구매일": item.get("sale_date"),
+                "바코드": item.get("barcd"),
+            })
+        else:
+            # 연금복권: gmInfo 포맷팅
+            gm_info = item.get("gmInfo", "")
+            attrs["게임정보"] = _format_pension_gm_info(gm_info) if gm_info else ""
+        return attrs
