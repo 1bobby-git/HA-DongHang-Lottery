@@ -231,7 +231,40 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if custom_session:
             await custom_session.close()
         hass.data[DOMAIN].pop(entry.entry_id, None)
+
+        # 마지막 entry 해제 시 서비스도 해제
+        remaining_entries = [
+            eid for eid in hass.data[DOMAIN]
+            if eid != "services_registered"
+        ]
+        if not remaining_entries and hass.data[DOMAIN].get("services_registered"):
+            _unregister_services(hass)
+            hass.data[DOMAIN]["services_registered"] = False
+            LOGGER.debug("[DHLottery] Services unregistered (last entry removed)")
+
     return unload_ok
+
+
+def _unregister_services(hass: HomeAssistant) -> None:
+    """등록된 모든 서비스 해제."""
+    services = [
+        SERVICE_REFRESH_ACCOUNT,
+        SERVICE_BUY_LOTTO645,
+        SERVICE_BUY_PENSION720,
+        SERVICE_FETCH_LOTTO645_RESULT,
+        SERVICE_FETCH_PENSION720_RESULT,
+        SERVICE_FETCH_WINNING_SHOPS,
+        SERVICE_SET_MY_NUMBERS,
+        SERVICE_GET_MY_NUMBERS,
+        SERVICE_CHECK_LOTTO645_NUMBERS,
+        SERVICE_CHECK_PENSION720_NUMBERS,
+        SERVICE_FETCH_NEXT_DRAW_INFO,
+        SERVICE_FETCH_PURCHASE_LEDGER,
+        SERVICE_SEARCH_LOTTERY_SHOPS,
+    ]
+    for service in services:
+        if hass.services.has_service(DOMAIN, service):
+            hass.services.async_remove(DOMAIN, service)
 
 
 def _register_services(hass: HomeAssistant) -> None:

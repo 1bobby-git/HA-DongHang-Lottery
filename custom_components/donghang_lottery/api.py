@@ -437,8 +437,8 @@ class DonghangLotteryClient:
         # 쿠키 삭제
         try:
             self._session.cookie_jar.clear()
-        except Exception:
-            pass
+        except Exception as e:
+            _LOGGER.debug("[DHLottery] 쿠키 삭제 중 예외 (무시됨): %s", e)
 
         # 새 UA로 변경
         self._rotate_user_agent()

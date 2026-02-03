@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import DonghangLotteryCoordinator, DonghangLotteryData
 from .device import device_info_for_group
+from .helpers import get_lotto645_item
 
 
 @dataclass(frozen=True)
@@ -91,23 +92,8 @@ class DonghangLotteryBinarySensor(
 
 
 def _get_lotto645_item(data: DonghangLotteryData) -> dict[str, Any]:
-    result = data.lotto645_result or {}
-    # api.py returns {drwNo, ..., _raw: {ltEpsd, tm1WnNo, rnk1WnNope, ...}}
-    # 센서는 원본 API 키(rnk1WnNope 등)를 사용하므로 _raw 반환
-    if "_raw" in result:
-        return result["_raw"]
-    # 폴백: 중첩된 응답 구조 탐색
-    payload = result.get("data", result)
-    if isinstance(payload, dict):
-        items = payload.get("list") or payload.get("result") or payload.get("data")
-        if isinstance(items, list) and items:
-            return items[0]
-        if isinstance(items, dict):
-            return items
-        return payload
-    if isinstance(payload, list) and payload:
-        return payload[0]
-    return {}
+    """Wrapper for backward compatibility."""
+    return get_lotto645_item(data)
 
 
 def _get_lotto645_first_winners(data: DonghangLotteryData) -> int:
