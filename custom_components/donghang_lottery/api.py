@@ -228,9 +228,10 @@ class DonghangLotteryClient:
             self._min_request_interval = 0.3
             self._max_request_interval = 1.0
         else:
-            # 직접 연결: IP 차단 방지를 위해 긴 간격 유지
-            self._min_request_interval = 8.0
-            self._max_request_interval = 20.0
+            # 직접 연결: 적절한 간격 유지 (8~20초는 너무 김, 55초 타임아웃 내 완료 불가)
+            # 동행복권 서버는 2~4초 간격이면 충분히 안전함
+            self._min_request_interval = 2.0
+            self._max_request_interval = 4.0
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._max_backoff_delay = 300.0  # 최대 백오프 5분
