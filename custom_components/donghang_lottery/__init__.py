@@ -108,7 +108,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         LOGGER.info("[DHLottery] 릴레이 모드: 기본 SSL 설정 사용 (%s)", relay_url)
     else:
         # 직접 연결: Chrome 유사 TLS 핑거프린트 + IPv4 강제
-        ssl_context = ssl.create_default_context()
+        # ssl.create_default_context()는 load_default_certs()를 호출하는 블로킹 작업
+        # 이벤트 루프 차단을 방지하기 위해 executor에서 실행
+        ssl_context = await hass.async_add_executor_job(ssl.create_default_context)
         try:
             ssl_context.set_ciphers(
                 "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:DHE+CHACHA20"

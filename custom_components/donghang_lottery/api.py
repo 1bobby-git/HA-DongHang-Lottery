@@ -536,8 +536,13 @@ class DonghangLotteryClient:
             await self._warmup_login_pages()
             modulus, exponent = await self._get_rsa_key()
 
-            enc_user_id = self._rsa_encrypt(self._username, modulus, exponent)
-            enc_password = self._rsa_encrypt(self._password, modulus, exponent)
+            # RSA 암호화는 CPU 집약적 작업이므로 executor에서 실행
+            enc_user_id = await asyncio.to_thread(
+                self._rsa_encrypt, self._username, modulus, exponent
+            )
+            enc_password = await asyncio.to_thread(
+                self._rsa_encrypt, self._password, modulus, exponent
+            )
 
             headers = {
                 **BASE_HEADERS,
@@ -1518,7 +1523,9 @@ class DonghangLotteryClient:
             "ROUND={round}&round={round}&LT_EPSD={round}"
             "&SEL_NO=&BUY_CNT=&AUTO_SEL_SET=SA&SEL_CLASS=&BUY_TYPE=A&ACCS_TYPE=01"
         ).format(round=win720_round)
-        data = {"q": quote(self._enc_text(payload))}
+        # AES 암호화는 CPU 집약적 작업이므로 executor에서 실행
+        encrypted = await asyncio.to_thread(self._enc_text, payload)
+        data = {"q": quote(encrypted)}
         headers = self._win720_headers("https://el.dhlottery.co.kr/makeAutoNo.do")
         resp = await self._request(
             "POST",
@@ -1527,7 +1534,8 @@ class DonghangLotteryClient:
             data=data,
         )
         body = await self._read_json(resp)
-        decrypted = self._dec_text(body.get("q", ""))
+        # AES 복호화도 executor에서 실행
+        decrypted = await asyncio.to_thread(self._dec_text, body.get("q", ""))
         parsed = json.loads(decrypted)
         sel_no = parsed.get("selLotNo")
         if not sel_no:
@@ -1546,7 +1554,9 @@ class DonghangLotteryClient:
             round=win720_round, sel=sel_numbers,
             auto_sel=auto_sel_set, buy_type=buy_type, count=count,
         )
-        data = {"q": quote(self._enc_text(payload))}
+        # AES 암호화는 CPU 집약적 작업이므로 executor에서 실행
+        encrypted = await asyncio.to_thread(self._enc_text, payload)
+        data = {"q": quote(encrypted)}
         headers = self._win720_headers("https://el.dhlottery.co.kr/makeOrderNo.do")
         resp = await self._request(
             "POST",
@@ -1555,7 +1565,8 @@ class DonghangLotteryClient:
             data=data,
         )
         body = await self._read_json(resp)
-        decrypted = self._dec_text(body.get("q", ""))
+        # AES 복호화도 executor에서 실행
+        decrypted = await asyncio.to_thread(self._dec_text, body.get("q", ""))
         parsed = json.loads(decrypted)
         return parsed["orderNo"], parsed["orderDate"]
 
@@ -1600,7 +1611,9 @@ class DonghangLotteryClient:
             buy_type_single=buy_type,
             total_cost=total_cost,
         )
-        data = {"q": quote(self._enc_text(payload))}
+        # AES 암호화는 CPU 집약적 작업이므로 executor에서 실행
+        encrypted = await asyncio.to_thread(self._enc_text, payload)
+        data = {"q": quote(encrypted)}
         headers = self._win720_headers("https://el.dhlottery.co.kr/connPro.do")
         resp = await self._request(
             "POST",
@@ -1626,7 +1639,8 @@ class DonghangLotteryClient:
             _LOGGER.info("[DHLottery] connPro 직접 응답: %s", body)
             return body
 
-        decrypted = self._dec_text(enc_value)
+        # AES 복호화도 executor에서 실행
+        decrypted = await asyncio.to_thread(self._dec_text, enc_value)
         return json.loads(decrypted)
 
     def _enc_text(self, plain_text: str) -> str:
