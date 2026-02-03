@@ -1194,7 +1194,11 @@ class DonghangLotteryClient:
         return data
 
     async def _get_rsa_key(self) -> tuple[str, str]:
-        """RSA 키 조회 (캐시 사용)."""
+        """RSA 키 조회 (캐시 사용, 짧은 타임아웃).
+
+        IP 차단 시 이 엔드포인트가 응답하지 않을 수 있으므로
+        15초 타임아웃으로 빠르게 실패하고 릴레이 모드 사용을 권장.
+        """
         now = time.time()
 
         # 캐시된 키가 유효하면 재사용
@@ -1202,30 +1206,72 @@ class DonghangLotteryClient:
             _LOGGER.debug("[DHLottery] RSA 키 캐시 사용")
             return self._cached_rsa_key
 
+        rsa_url = self._resolve_url("https://www.dhlottery.co.kr/login/selectRsaModulus.do")
+
         headers = self._get_headers()
         headers.update({
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://www.dhlottery.co.kr/common.do?method=login",
+            "Referer": self._resolve_url("https://www.dhlottery.co.kr/common.do?method=login"),
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
         })
 
-        data = await self._get_json("https://www.dhlottery.co.kr/login/selectRsaModulus.do", headers=headers)
+        # RSA 키 요청은 짧은 타임아웃 (15초) + 최소 재시도 (1회)
+        # IP 차단 시 빠르게 실패하여 사용자에게 릴레이 모드 안내
+        last_error = None
+        for attempt in range(2):  # 최대 2회 시도
+            try:
+                _LOGGER.debug("[DHLottery] RSA 키 요청 (시도 %d/2, 타임아웃 15초)", attempt + 1)
+                resp = await self._session.request(
+                    "GET",
+                    rsa_url,
+                    headers=headers,
+                    timeout=ClientTimeout(total=15),
+                    allow_redirects=True,
+                )
+                if resp.status == 200:
+                    data = await self._read_json(resp)
+                    if "data" in data and "rsaModulus" in data["data"]:
+                        key = (data["data"]["rsaModulus"], data["data"]["publicExponent"])
+                    elif "rsaModulus" in data:
+                        key = (data["rsaModulus"], data["publicExponent"])
+                    else:
+                        raise DonghangLotteryResponseError("RSA modulus not found in response")
 
-        if "data" in data and "rsaModulus" in data["data"]:
-            key = (data["data"]["rsaModulus"], data["data"]["publicExponent"])
-        elif "rsaModulus" in data:
-            key = (data["rsaModulus"], data["publicExponent"])
+                    # 캐시 저장
+                    self._cached_rsa_key = key
+                    self._rsa_key_time = now
+                    _LOGGER.debug("[DHLottery] RSA 키 획득 및 캐시 저장")
+                    return key
+                else:
+                    last_error = f"HTTP {resp.status}"
+                    _LOGGER.warning("[DHLottery] RSA 키 요청 실패: HTTP %s", resp.status)
+
+            except asyncio.TimeoutError:
+                last_error = "타임아웃 (15초)"
+                _LOGGER.warning("[DHLottery] RSA 키 요청 타임아웃 (시도 %d/2)", attempt + 1)
+            except asyncio.CancelledError:
+                raise
+            except Exception as err:
+                last_error = str(err)
+                _LOGGER.warning("[DHLottery] RSA 키 요청 오류: %s", err)
+
+            if attempt < 1:
+                await asyncio.sleep(2)  # 짧은 대기 후 재시도
+
+        # RSA 키 획득 실패 - IP 차단 가능성 높음
+        if self._relay_url:
+            raise DonghangLotteryError(
+                f"RSA 키 획득 실패 ({last_error}). 릴레이 서버 연결을 확인하세요."
+            )
         else:
-            raise DonghangLotteryResponseError("RSA modulus not found")
-
-        # 캐시 저장
-        self._cached_rsa_key = key
-        self._rsa_key_time = now
-        _LOGGER.debug("[DHLottery] RSA 키 획득 및 캐시 저장")
-        return key
+            raise DonghangLotteryError(
+                f"RSA 키 획득 실패 ({last_error}). "
+                "동행복권 서버에서 IP가 차단되었을 수 있습니다. "
+                "'IP 차단 우회' 옵션을 활성화하고 릴레이 서버를 설정하세요."
+            )
 
     async def _warmup_login_pages(self) -> None:
         """로그인 페이지 워밍업 (v0.7.8 적응형).
