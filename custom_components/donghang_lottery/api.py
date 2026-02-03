@@ -1218,6 +1218,11 @@ class DonghangLotteryClient:
             "Sec-Fetch-Site": "same-origin",
         })
 
+        # 쿠키 헤더 추가 (세션 유지 필수)
+        cookie_header = self._get_cookie_header(rsa_url)
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+
         # RSA 키 요청은 짧은 타임아웃 (15초) + 최소 재시도 (1회)
         # IP 차단 시 빠르게 실패하여 사용자에게 릴레이 모드 안내
         last_error = None
