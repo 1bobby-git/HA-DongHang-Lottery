@@ -14,13 +14,13 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryError
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_time_interval
 
-from .api import DonghangLotteryClient, DonghangLotteryError
+from .api import DonghangLotteryClient, DonghangLotteryError, DonghangLotterySoundnessPledgeError
 from .const import (
     ATTR_CITY,
     ATTR_COUNT,
@@ -147,6 +147,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         password,
         relay_url=relay_url,
     )
+
+    # 건전서약 확인 (데이터 로드 전에 먼저 확인)
+    try:
+        pledge_info = await client.async_check_soundness_pledge()
+        if not pledge_info.get("pledged"):
+            await session.close()
+            raise ConfigEntryError(
+                "건전서약이 필요합니다. 동행복권 웹사이트(dhlottery.co.kr)에서 건전서약을 완료한 후 다시 시도하세요."
+            )
+    except DonghangLotteryError as err:
+        LOGGER.warning("[DHLottery] 건전서약 확인 실패: %s - 통과 처리", err)
+        # 건전서약 API 실패 시 일단 통과 (서버 오류일 수 있음)
+    except ConfigEntryError:
+        raise
+    except Exception as err:
+        LOGGER.warning("[DHLottery] 건전서약 확인 중 예외: %s - 통과 처리", err)
+
     location_entity = entry.options.get(
         CONF_LOCATION_ENTITY, entry.data.get(CONF_LOCATION_ENTITY, "")
     )

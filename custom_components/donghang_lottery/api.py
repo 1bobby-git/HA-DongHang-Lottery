@@ -153,6 +153,10 @@ class DonghangLotteryResponseError(DonghangLotteryError):
     """Unexpected response error."""
 
 
+class DonghangLotterySoundnessPledgeError(DonghangLotteryError):
+    """건전서약 미완료 오류."""
+
+
 @dataclass
 class AccountSummary:
     total_amount: int
@@ -602,6 +606,49 @@ class DonghangLotteryClient:
             unconfirmed_count=unconfirmed,
             unclaimed_high_value_count=high_value,
         )
+
+    async def async_check_soundness_pledge(self) -> dict[str, Any]:
+        """건전서약 상태 확인.
+
+        Returns:
+            건전서약 정보: {"pledged": bool, "pledge_date": str | None}
+
+        API 응답 예시 (서약 완료):
+        {"resultCode":null,"resultMessage":null,"data":{"result":{"sdnsPrchsSgntDt":"2026-01-15"},"cnt":1}}
+        """
+        await self.async_login()
+
+        headers = {
+            **BASE_HEADERS,
+            "Referer": "https://www.dhlottery.co.kr/mypage/home",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "AJAX": "true",
+        }
+        cookie_header = self._get_cookie_header("https://www.dhlottery.co.kr/hpns/selectSdnsCamPain.do")
+        if cookie_header:
+            headers["Cookie"] = cookie_header
+
+        try:
+            data = await self._get_json(
+                "https://www.dhlottery.co.kr/hpns/selectSdnsCamPain.do",
+                headers=headers,
+            )
+        except Exception as err:
+            _LOGGER.warning("[DHLottery] 건전서약 상태 확인 실패: %s", err)
+            # 확인 실패 시 일단 통과 (서버 오류일 수 있음)
+            return {"pledged": True, "pledge_date": None, "error": str(err)}
+
+        # 응답 파싱: data.result.sdnsPrchsSgntDt
+        result = (data.get("data") or {}).get("result") or {}
+        pledge_date = result.get("sdnsPrchsSgntDt")
+
+        # 날짜가 있으면 건전서약 완료
+        pledged = bool(pledge_date and str(pledge_date).strip())
+
+        _LOGGER.info("[DHLottery] 건전서약 상태: %s (날짜: %s)", "완료" if pledged else "미완료", pledge_date)
+
+        return {"pledged": pledged, "pledge_date": pledge_date}
 
     async def async_get_lotto645_result(self, draw_no: int | None = None) -> dict[str, Any]:
         # 새 API는 drwNo 파라미터를 무시하고 최신 회차를 반환함
