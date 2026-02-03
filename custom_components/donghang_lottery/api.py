@@ -587,7 +587,16 @@ class DonghangLotteryClient:
     async def async_fetch_account_summary(self) -> AccountSummary:
         await self.async_login()
         mndp = await self._get_user_mndp()
-        tooltip = await self._get_mypage_tooltip()
+
+        # tooltip은 선택적 - 실패해도 계속 진행 (미확인 게임/고액 미수령 정보만 제공)
+        tooltip = {}
+        try:
+            tooltip = await self._get_mypage_tooltip()
+        except asyncio.CancelledError:
+            _LOGGER.warning("[DHLottery] tooltip 조회 취소됨 - 기본값 사용")
+            # CancelledError는 전파하지 않고 기본값 사용
+        except Exception as err:
+            _LOGGER.warning("[DHLottery] tooltip 조회 실패: %s - 기본값 사용", err)
 
         total_amount = _safe_int(mndp.get("totalAmt"))
         if total_amount == 0:
