@@ -20,7 +20,8 @@ from .api import AccountSummary, DonghangLotteryClient, DonghangLotteryError
 from .const import DOMAIN
 
 # First refresh timeout (seconds) - must be shorter than HA setup timeout (60s)
-FIRST_REFRESH_TIMEOUT = 45
+# 직접 연결 모드에서 요청 간 딜레이가 길 수 있으므로 여유 확보
+FIRST_REFRESH_TIMEOUT = 55
 
 LOGGER = logging.getLogger(__name__)
 

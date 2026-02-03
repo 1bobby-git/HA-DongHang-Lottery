@@ -294,7 +294,11 @@ class DonghangLotteryClient:
             if elapsed < target_interval:
                 delay = target_interval - elapsed
                 _LOGGER.debug("[DHLottery] 스로틀링: %.2f초 대기", delay)
-                await asyncio.sleep(delay)
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    _LOGGER.debug("[DHLottery] 스로틀링 대기 중 취소됨")
+                    raise
 
             self._last_request_time = time.time()
             self._request_count += 1
@@ -1217,8 +1221,8 @@ class DonghangLotteryClient:
                     skip_circuit_breaker=True,
                 )
             except asyncio.CancelledError:
-                _LOGGER.warning("[DHLottery] 워밍업 취소됨 (CancelledError) - 스킵")
-                return
+                _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 취소됨 - CancelledError 전파")
+                raise
             except Exception as err:
                 self._warmup_failures += 1
                 _LOGGER.warning("[DHLottery] 메인 페이지 워밍업 실패 (스킵, 연속 %d회): %s", self._warmup_failures, err)
@@ -1227,10 +1231,8 @@ class DonghangLotteryClient:
             try:
                 await asyncio.sleep(random.uniform(0.5, 1.0))
             except asyncio.CancelledError:
-                _LOGGER.warning("[DHLottery] 워밍업 대기 중 취소됨 - 스킵")
-                self._cookies_initialized = True
-                self._session_warmed_up = True
-                return
+                _LOGGER.warning("[DHLottery] 워밍업 대기 중 취소됨 - CancelledError 전파")
+                raise
 
         # 2단계: 로그인 페이지 방문 (5초 타임아웃, 재시도 없음)
         headers = self._get_headers()
@@ -1248,10 +1250,10 @@ class DonghangLotteryClient:
                 skip_circuit_breaker=True,
             )
         except asyncio.CancelledError:
-            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 취소됨 - 스킵")
-            self._cookies_initialized = True
-            self._session_warmed_up = True
-            return
+            _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 취소됨 - CancelledError 전파")
+            # 워밍업이 완료되지 않았으므로 플래그를 True로 설정하지 않음
+            # CancelledError는 HA 타임아웃 등 상위에서 처리해야 하므로 전파
+            raise
         except Exception as err:
             self._warmup_failures += 1
             _LOGGER.warning("[DHLottery] 로그인 페이지 워밍업 실패 (스킵, 연속 %d회): %s", self._warmup_failures, err)
@@ -1260,10 +1262,8 @@ class DonghangLotteryClient:
         try:
             await asyncio.sleep(random.uniform(0.5, 1.0))
         except asyncio.CancelledError:
-            _LOGGER.warning("[DHLottery] 워밍업 완료 대기 중 취소됨")
-            self._cookies_initialized = True
-            self._session_warmed_up = True
-            return
+            _LOGGER.warning("[DHLottery] 워밍업 완료 대기 중 취소됨 - CancelledError 전파")
+            raise
 
         self._warmup_failures = 0  # 성공 시 실패 카운터 리셋
         self._cookies_initialized = True
@@ -1743,14 +1743,27 @@ class DonghangLotteryClient:
 
                     # 인증 실패 (401) - 세션 완전 재초기화
                     if resp.status == 401:
-                        _LOGGER.warning("[DHLottery] 401 Unauthorized - 세션 재초기화")
+                        _LOGGER.warning("[DHLottery] 401 Unauthorized - 세션 재초기화 (시도 %d/%d)", attempt + 1, effective_retries + 1)
                         await self._full_session_reset()
                         if attempt < effective_retries:
-                            await asyncio.sleep(random.uniform(5, 10))
-                            await self.async_login(force=True)
-                            cookie_header = self._get_cookie_header(url)
-                            if cookie_header:
-                                request_headers["Cookie"] = cookie_header
+                            try:
+                                await asyncio.sleep(random.uniform(3, 5))
+                            except asyncio.CancelledError:
+                                _LOGGER.warning("[DHLottery] 401 재시도 대기 중 취소됨")
+                                raise
+                            try:
+                                await self.async_login(force=True)
+                                cookie_header = self._get_cookie_header(url)
+                                if cookie_header:
+                                    request_headers["Cookie"] = cookie_header
+                                else:
+                                    _LOGGER.warning("[DHLottery] 401 재시도: 로그인 후 쿠키 없음")
+                            except asyncio.CancelledError:
+                                _LOGGER.warning("[DHLottery] 401 재시도: 재로그인 중 취소됨")
+                                raise
+                            except Exception as login_err:
+                                _LOGGER.warning("[DHLottery] 401 재시도: 재로그인 실패 - %s", login_err)
+                                # 재로그인 실패해도 다음 시도 진행
                             continue
 
                     # 차단됨 (403 Forbidden) - 긴 대기 후 재시도
@@ -1769,7 +1782,11 @@ class DonghangLotteryClient:
                                 self._retry_delay * (2 ** attempt) + random.uniform(30, 60)
                             )
                             _LOGGER.info("[DHLottery] 차단 감지 - %.0f초 대기 후 재시도...", delay)
-                            await asyncio.sleep(delay)
+                            try:
+                                await asyncio.sleep(delay)
+                            except asyncio.CancelledError:
+                                _LOGGER.warning("[DHLottery] 403 복구 대기 중 취소됨")
+                                raise
                             # 재워밍업
                             await self._warmup_login_pages()
                             continue
@@ -1788,7 +1805,11 @@ class DonghangLotteryClient:
                                 60 * (2 ** attempt) + random.uniform(30, 60)
                             )
                             _LOGGER.info("[DHLottery] Rate limit - %.0f초 대기...", delay)
-                            await asyncio.sleep(delay)
+                            try:
+                                await asyncio.sleep(delay)
+                            except asyncio.CancelledError:
+                                _LOGGER.warning("[DHLottery] 429 복구 대기 중 취소됨")
+                                raise
                             continue
 
                     # 서버 에러 (5xx)
@@ -1796,7 +1817,11 @@ class DonghangLotteryClient:
                         _LOGGER.warning("[DHLottery] 서버 에러 %s - 재시도", resp.status)
                         if attempt < effective_retries:
                             delay = self._retry_delay + random.uniform(5, 15)
-                            await asyncio.sleep(delay)
+                            try:
+                                await asyncio.sleep(delay)
+                            except asyncio.CancelledError:
+                                _LOGGER.warning("[DHLottery] 5xx 복구 대기 중 취소됨")
+                                raise
                             continue
 
                     # 기타 에러
