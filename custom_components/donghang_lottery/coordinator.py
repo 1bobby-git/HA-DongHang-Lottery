@@ -327,75 +327,96 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
         prev_data = self.data
         errors: list[str] = []
 
-        # Fetch account summary
-        try:
-            account = await self.client.async_fetch_account_summary()
-            LOGGER.info(
-                "[DHLottery] [OK] Account data received - balance: %sw, unconfirmed: %s, high-value unclaimed: %s",
-                account.total_amount, account.unconfirmed_count, account.unclaimed_high_value_count,
-            )
-        except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] [FAIL] Account info query failed: %s", err)
-            self._last_error = f"Account query failed: {err}"
+        # 그룹 1: 독립적인 API 호출 병렬 실행
+        async def _fetch_account():
+            return await self.client.async_fetch_account_summary()
+
+        async def _fetch_lotto():
+            return await self.client.async_get_lotto645_result()
+
+        async def _fetch_pension():
+            return await self.client.async_get_pension720_result()
+
+        async def _fetch_pension_round():
+            return await self.client.async_get_latest_pension720_round()
+
+        results = await asyncio.gather(
+            _fetch_account(),
+            _fetch_lotto(),
+            _fetch_pension(),
+            _fetch_pension_round(),
+            return_exceptions=True,
+        )
+
+        account_result, lotto_raw, pension_raw, pension_round_raw = results
+
+        # Account 처리 (필수)
+        if isinstance(account_result, Exception):
+            LOGGER.warning("[DHLottery] [FAIL] Account info query failed: %s", account_result)
+            self._last_error = f"Account query failed: {account_result}"
             if prev_data is None:
-                raise UpdateFailed(f"Account query failed: {err}") from err
+                raise UpdateFailed(f"Account query failed: {account_result}") from account_result
             LOGGER.info("[DHLottery] Preserving existing data (data_source=%s)", self._data_source)
             return prev_data
+
+        account = account_result
+        LOGGER.info(
+            "[DHLottery] [OK] Account data received - balance: %sw, unconfirmed: %s, high-value unclaimed: %s",
+            account.total_amount, account.unconfirmed_count, account.unclaimed_high_value_count,
+        )
 
         self._data_loaded = True
         self._data_source = "api"
         self._last_update_time = dt_util.now()
 
-        # Fetch Lotto 6/45 results
+        # Lotto 645 처리
         lotto_result: dict[str, Any] | None = None
-        try:
-            lotto_result = await self.client.async_get_lotto645_result()
-            if lotto_result:
-                LOGGER.info(
-                    "[DHLottery] [OK] Lotto 645 data received - keys: %s",
-                    list(lotto_result.keys()) if isinstance(lotto_result, dict) else type(lotto_result).__name__,
-                )
-                LOGGER.debug("[DHLottery] 로또 645 원시 데이터: %s", lotto_result)
-            else:
-                LOGGER.info("[DHLottery] [OK] Lotto 645 query successful - no data (empty response)")
-                errors.append("Lotto645: empty response")
-        except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] [FAIL] Lotto 645 query failed: %s", err)
-            errors.append(f"Lotto645: {err}")
+        if isinstance(lotto_raw, Exception):
+            LOGGER.warning("[DHLottery] [FAIL] Lotto 645 query failed: %s", lotto_raw)
+            errors.append(f"Lotto645: {lotto_raw}")
             if prev_data is not None:
                 lotto_result = prev_data.lotto645_result
+        elif lotto_raw:
+            lotto_result = lotto_raw
+            LOGGER.info(
+                "[DHLottery] [OK] Lotto 645 data received - keys: %s",
+                list(lotto_result.keys()) if isinstance(lotto_result, dict) else type(lotto_result).__name__,
+            )
+            LOGGER.debug("[DHLottery] 로또 645 원시 데이터: %s", lotto_result)
+        else:
+            LOGGER.info("[DHLottery] [OK] Lotto 645 query successful - no data (empty response)")
+            errors.append("Lotto645: empty response")
 
-        # Fetch Pension 720+ results
+        # Pension 720 처리
         pension_result: dict[str, Any] | None = None
-        try:
-            pension_result = await self.client.async_get_pension720_result()
-            if pension_result:
-                LOGGER.info(
-                    "[DHLottery] [OK] Pension 720 data received - keys: %s",
-                    list(pension_result.keys()) if isinstance(pension_result, dict) else type(pension_result).__name__,
-                )
-                LOGGER.debug("[DHLottery] 연금복권 720 원시 데이터: %s", pension_result)
-            else:
-                LOGGER.info("[DHLottery] [OK] Pension 720 query successful - no data (empty response)")
-                errors.append("Pension720: empty response")
-        except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] [FAIL] Pension 720 query failed: %s", err)
-            errors.append(f"Pension720: {err}")
+        if isinstance(pension_raw, Exception):
+            LOGGER.warning("[DHLottery] [FAIL] Pension 720 query failed: %s", pension_raw)
+            errors.append(f"Pension720: {pension_raw}")
             if prev_data is not None:
                 pension_result = prev_data.pension720_result
+        elif pension_raw:
+            pension_result = pension_raw
+            LOGGER.info(
+                "[DHLottery] [OK] Pension 720 data received - keys: %s",
+                list(pension_result.keys()) if isinstance(pension_result, dict) else type(pension_result).__name__,
+            )
+            LOGGER.debug("[DHLottery] 연금복권 720 원시 데이터: %s", pension_result)
+        else:
+            LOGGER.info("[DHLottery] [OK] Pension 720 query successful - no data (empty response)")
+            errors.append("Pension720: empty response")
 
-        # Fetch latest Pension 720+ round
+        # Pension 720 round 처리
         pension_round: int | None = None
-        try:
-            pension_round = await self.client.async_get_latest_pension720_round()
-            LOGGER.info("[DHLottery] [OK] Pension 720 round: %s", pension_round)
-        except DonghangLotteryError as err:
-            LOGGER.warning("[DHLottery] [FAIL] Pension 720 round query failed: %s", err)
-            errors.append(f"Pension720Round: {err}")
+        if isinstance(pension_round_raw, Exception):
+            LOGGER.warning("[DHLottery] [FAIL] Pension 720 round query failed: %s", pension_round_raw)
+            errors.append(f"Pension720Round: {pension_round_raw}")
             if prev_data is not None:
                 pension_round = prev_data.pension720_round
+        else:
+            pension_round = pension_round_raw
+            LOGGER.info("[DHLottery] [OK] Pension 720 round: %s", pension_round)
 
-        # Find nearest winning shops
+        # Find nearest winning shops (병렬 조회)
         nearest_lotto_shop: dict[str, Any] | None = None
         nearest_pension_shop: dict[str, Any] | None = None
 
@@ -405,17 +426,39 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                 my_lat = state.attributes.get("latitude")
                 my_lon = state.attributes.get("longitude")
                 if my_lat is not None and my_lon is not None:
-                    # Lotto 6/45 winning shops
-                    try:
-                        lotto_round_no = None
-                        if lotto_result:
-                            raw = lotto_result.get("_raw", lotto_result)
-                            lotto_round_no = raw.get("ltEpsd") or raw.get("drwNo")
+                    # 회차 정보 준비
+                    lotto_round_no = None
+                    if lotto_result:
+                        raw = lotto_result.get("_raw", lotto_result)
+                        lotto_round_no = raw.get("ltEpsd") or raw.get("drwNo")
+                    pension_round_no = pension_round
+
+                    async def _fetch_lotto_shops():
+                        nonlocal lotto_round_no
                         if not lotto_round_no:
                             lotto_round_no = await self.client.async_get_latest_winning_shop_round("lt645")
-                        shops_data = await self.client.async_get_winning_shops(
-                            "lt645", "1", str(lotto_round_no),
-                        )
+                        return await self.client.async_get_winning_shops("lt645", "1", str(lotto_round_no))
+
+                    async def _fetch_pension_shops():
+                        nonlocal pension_round_no
+                        if not pension_round_no:
+                            pension_round_no = await self.client.async_get_latest_winning_shop_round("pt720")
+                        return await self.client.async_get_winning_shops("pt720", "1", str(pension_round_no))
+
+                    shop_results = await asyncio.gather(
+                        _fetch_lotto_shops(),
+                        _fetch_pension_shops(),
+                        return_exceptions=True,
+                    )
+
+                    # 로또 판매점 처리
+                    if isinstance(shop_results[0], Exception):
+                        LOGGER.warning("[DHLottery] [FAIL] Lotto winning shop query failed: %s", shop_results[0])
+                        errors.append(f"LottoShop: {shop_results[0]}")
+                        if prev_data is not None:
+                            nearest_lotto_shop = prev_data.nearest_lotto_shop
+                    else:
+                        shops_data = shop_results[0]
                         items = (shops_data.get("data") or {}).get("list") or shops_data.get("list") or shops_data.get("result") or []
                         nearest_lotto_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon), lottery_type="lt645")
                         if nearest_lotto_shop:
@@ -426,20 +469,15 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                             )
                         else:
                             LOGGER.info("[DHLottery] No lotto winning shop (physical stores only)")
-                    except DonghangLotteryError as err:
-                        LOGGER.warning("[DHLottery] [FAIL] Lotto winning shop query failed: %s", err)
-                        errors.append(f"LottoShop: {err}")
-                        if prev_data is not None:
-                            nearest_lotto_shop = prev_data.nearest_lotto_shop
 
-                    # Pension 720+ winning shops
-                    try:
-                        pension_round_no = pension_round
-                        if not pension_round_no:
-                            pension_round_no = await self.client.async_get_latest_winning_shop_round("pt720")
-                        shops_data = await self.client.async_get_winning_shops(
-                            "pt720", "1", str(pension_round_no),
-                        )
+                    # 연금복권 판매점 처리
+                    if isinstance(shop_results[1], Exception):
+                        LOGGER.warning("[DHLottery] [FAIL] Pension winning shop query failed: %s", shop_results[1])
+                        errors.append(f"PensionShop: {shop_results[1]}")
+                        if prev_data is not None:
+                            nearest_pension_shop = prev_data.nearest_pension_shop
+                    else:
+                        shops_data = shop_results[1]
                         items = (shops_data.get("data") or {}).get("list") or shops_data.get("list") or shops_data.get("result") or []
                         nearest_pension_shop = self._find_nearest_physical_shop(items, float(my_lat), float(my_lon), lottery_type="pt720")
                         if nearest_pension_shop:
@@ -450,11 +488,6 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
                             )
                         else:
                             LOGGER.info("[DHLottery] No pension winning shop (physical stores only)")
-                    except DonghangLotteryError as err:
-                        LOGGER.warning("[DHLottery] [FAIL] Pension winning shop query failed: %s", err)
-                        errors.append(f"PensionShop: {err}")
-                        if prev_data is not None:
-                            nearest_pension_shop = prev_data.nearest_pension_shop
 
         # Fetch purchase ledger
         purchase_ledger: list[dict[str, Any]] | None = None
@@ -554,6 +587,143 @@ class DonghangLotteryCoordinator(DataUpdateCoordinator["DonghangLotteryData"]):
             nearest_pension_shop=nearest_pension_shop,
             purchase_ledger=purchase_ledger,
         )
+
+    def _parse_lotto645_game_choice(self, choice_str: str) -> dict[str, Any]:
+        """arrGameChoiceNum 항목 파싱.
+
+        형식: "A|06|10|20|31|32|441"
+        - A: 슬롯 (A~E)
+        - 06|10|20|31|32: 5개 번호 (2자리)
+        - 441: 6번째 번호(44) + genType(1)
+        """
+        parts = choice_str.split("|")
+        if len(parts) != 7:
+            return {"raw": choice_str, "numbers": [], "slot": "", "mode": "unknown"}
+
+        slot = parts[0]
+        numbers = []
+        for i in range(1, 6):
+            try:
+                numbers.append(int(parts[i]))
+            except ValueError:
+                pass
+
+        # 마지막 부분: 번호 + genType
+        last_part = parts[6]
+        if len(last_part) >= 2:
+            try:
+                last_num = int(last_part[:-1])
+                gen_type = int(last_part[-1])
+                numbers.append(last_num)
+            except ValueError:
+                gen_type = 0
+        else:
+            gen_type = 0
+
+        mode_map = {0: "auto", 1: "manual", 2: "semi_auto"}
+        return {
+            "slot": slot,
+            "numbers": numbers,
+            "mode": mode_map.get(gen_type, "unknown"),
+            "raw": choice_str,
+        }
+
+    def add_lotto645_purchase(self, buy_result: dict[str, Any]) -> None:
+        """로또 구매 결과를 purchase_ledger에 즉시 추가.
+
+        API 응답 예시:
+        {
+            "loginYn": "Y",
+            "result": {
+                "buyRound": "1211",
+                "arrGameChoiceNum": ["A|06|10|20|31|32|441"],
+                "barCode1": "68455", ..., "barCode6": "63942",
+                "issueDay": "2026/02/10",
+                "issueTime": "10:09:40",
+                "drawDate": "2026/02/14",
+                "payLimitDate": "2027/02/15",
+                "nBuyAmount": 1000,
+                ...
+            }
+        }
+        """
+        result = buy_result.get("result", {})
+        if not result or result.get("resultCode") != "100":
+            LOGGER.warning("[DHLottery] Cannot add purchase - invalid result: %s", buy_result)
+            return
+
+        # 바코드 조합
+        barcode_parts = [
+            result.get(f"barCode{i}", "") for i in range(1, 7)
+        ]
+        full_barcode = " ".join(barcode_parts)
+
+        # 날짜/시간 파싱
+        issue_day = result.get("issueDay", "").replace("/", "-")
+        issue_time = result.get("issueTime", "")
+        draw_date = result.get("drawDate", "").replace("/", "-")
+        buy_round = result.get("buyRound", "")
+
+        # 게임 번호 파싱
+        game_choices = result.get("arrGameChoiceNum", [])
+        new_items = []
+
+        for choice_str in game_choices:
+            parsed = self._parse_lotto645_game_choice(choice_str)
+            item = {
+                "_type": "lotto645_game",
+                "_source": "purchase",  # 구매 직후 추가됨을 표시
+                "ltGdsNm": "로또6/45",
+                "barcd": full_barcode,
+                "buyDt": f"{issue_day} {issue_time}",
+                "drawDt": draw_date,
+                "ltEpsd": buy_round,
+                "buyAmt": result.get("nBuyAmount", 0),
+                "slot": parsed.get("slot", ""),
+                "numbers": parsed.get("numbers", []),
+                "mode": parsed.get("mode", ""),
+                "payLimitDate": result.get("payLimitDate", "").replace("/", "-"),
+                # 추가 정보
+                "weekDay": result.get("weekDay", ""),
+            }
+            new_items.append(item)
+            LOGGER.info(
+                "[DHLottery] [OK] Purchase added to ledger: round=%s, slot=%s, numbers=%s",
+                buy_round, parsed.get("slot"), parsed.get("numbers"),
+            )
+
+        # 현재 데이터에 추가
+        if self.data and new_items:
+            current_ledger = list(self.data.purchase_ledger or [])
+            # 중복 방지: 같은 바코드가 있으면 추가하지 않음
+            existing_barcodes = {item.get("barcd") for item in current_ledger}
+            for item in new_items:
+                if item.get("barcd") not in existing_barcodes:
+                    current_ledger.insert(0, item)  # 최신 항목을 앞에 추가
+
+            # 데이터 업데이트 (immutable dataclass이므로 새로 생성)
+            self.async_set_updated_data(
+                DonghangLotteryData(
+                    account=self.data.account,
+                    lotto645_result=self.data.lotto645_result,
+                    pension720_result=self.data.pension720_result,
+                    pension720_round=self.data.pension720_round,
+                    nearest_lotto_shop=self.data.nearest_lotto_shop,
+                    nearest_pension_shop=self.data.nearest_pension_shop,
+                    purchase_ledger=current_ledger,
+                )
+            )
+
+    def add_pension720_purchase(self, buy_result: dict[str, Any]) -> None:
+        """연금복권 구매 결과를 purchase_ledger에 즉시 추가."""
+        result = buy_result.get("result", {})
+        if not result:
+            LOGGER.warning("[DHLottery] Cannot add pension purchase - invalid result: %s", buy_result)
+            return
+
+        # 연금복권 응답 구조에 맞게 파싱 (추후 테스트 후 보완)
+        LOGGER.info("[DHLottery] Pension 720 purchase result received: %s", result)
+        # TODO: 연금복권 구매 결과 파싱 및 추가
 
 
 @dataclass

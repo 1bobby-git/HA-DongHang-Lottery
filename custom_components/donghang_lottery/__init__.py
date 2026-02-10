@@ -518,7 +518,13 @@ async def _handle_buy_lotto645(call: ServiceCall) -> dict[str, Any]:
     else:
         result = await client.async_buy_lotto645_auto(count)
 
-    await data["coordinator"].async_request_refresh()
+    # 구매 성공 시 즉시 purchase_ledger에 추가
+    coordinator: DonghangLotteryCoordinator = data["coordinator"]
+    coordinator.add_lotto645_purchase(result)
+
+    # 백그라운드에서 전체 데이터 새로고침 (UI 블로킹 방지)
+    hass.async_create_task(coordinator.async_request_refresh())
+
     return {"result": result}
 
 
@@ -548,7 +554,13 @@ async def _handle_buy_pension720(call: ServiceCall) -> dict[str, Any]:
     else:
         result = await client.async_buy_pension720_auto(count=count)
 
-    await data["coordinator"].async_request_refresh()
+    # 구매 성공 시 즉시 purchase_ledger에 추가
+    coordinator: DonghangLotteryCoordinator = data["coordinator"]
+    coordinator.add_pension720_purchase(result)
+
+    # 백그라운드에서 전체 데이터 새로고침 (UI 블로킹 방지)
+    hass.async_create_task(coordinator.async_request_refresh())
+
     return {"result": result}
 
 
